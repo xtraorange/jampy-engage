@@ -1,0 +1,14 @@
+# Email template for override email (bulk sending to a single recipient)
+# This template is used when --email ADDRESS is specified to send all
+# generated CSVs in a single email.
+
+subject: "Viva Engage Member Lists - {date}"
+
+body: |
+  Please find attached the member lists for the following communities:
+  
+  {groups_list}
+  
+  Total Reports: {count}
+  
+  Generated on {date}

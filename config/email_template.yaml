@@ -1,0 +1,25 @@
+# Email template for Viva Engage member list reports
+# You can customize the subject and body here.
+# Available template variables:
+#   {group_name}     - the display name of the community
+#   {group_handle}   - the handle/ID of the community
+#   {date}           - the generation date (YYYY-MM-DD)
+#   {count}          - the number of members in the list
+
+subject: "Viva Engage Member List: {group_name}"
+
+body: |
+  Hello,
+  
+  Please find attached the member list export for the Viva Engage community:
+  {group_name} ({group_handle})
+  
+  Report Details:
+  - Generated: {date}
+  - Total members: {count}
+  
+  Please note: this file should be handled per your organization's data governance
+  policies.
+  
+  Best regards,
+  Viva Engage Member List Generator

@@ -1,0 +1,32 @@
+# General configuration for the Viva Engage report generator
+
+# Oracle connection string (TNS) or DSN to use when opening the database.
+# e.g. "mydb" for cx_Oracle.connect
+oracle_tns: "OMSPRD"
+
+# Default output directory for generated CSVs.  Each group will get its own
+# subfolder under this path unless overridden in the group config.
+output_dir: "./output"
+
+# Optional parallelism: maximum number of concurrent queries.  If omitted,
+# the script will choose a sensible default based on CPU count.
+max_workers: 4
+
+# Email delivery method: "smtp" or "outlook"
+# Default is "smtp" if not specified
+email_method: "outlook"
+
+# If using Outlook, whether to automatically send email (true) or leave it
+# open for review (false). Only applies when email_method is "outlook".
+outlook_auto_send: false
+
+# Optional email settings for sending CSVs to recipients.
+# If email_recipient is set, the --email flag will send results to this address.
+# If omitted, each group's individual email address is used (if specified).
+# email_recipient: "admin@fastenal.com"
+
+# SMTP configuration (optional; required if using email features)
+# smtp_server: "mail.fastenal.com"
+# smtp_port: 25
+# smtp_use_tls: false
+# smtp_from: "reports@fastenal.com"
