@@ -29,8 +29,14 @@ python -m src.ui
 REM When the server exits, check for restart flag
 if exist restart.flag (
     del restart.flag
-    echo Restarting server...
+    cls
     echo.
+    echo ============================================
+    echo   Jampy Engage
+    echo   http://localhost:5000
+    echo ============================================
+    echo.
+    echo Restarting server...
     goto loop
 )
 

@@ -878,6 +878,9 @@ def create_app():
 
 if __name__ == "__main__":
     """Run the Flask application."""
+    import sys
+    import io
+    
     app = create_app()
     
     # Open browser after a brief delay to let the server start
@@ -888,4 +891,11 @@ if __name__ == "__main__":
     browser_thread = threading.Thread(target=open_browser, daemon=True)
     browser_thread.start()
     
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    # Suppress Werkzeug banner by redirecting stdout during startup
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    
+    try:
+        app.run(host="0.0.0.0", port=5000, debug=False)
+    finally:
+        sys.stdout = old_stdout
