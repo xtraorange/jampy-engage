@@ -14,7 +14,14 @@ from .group import Group
 def discover_groups(base_path: str) -> List[Group]:
     pattern = os.path.join(base_path, "groups", "*")
     folders = [p for p in glob.glob(pattern) if os.path.isdir(p)]
-    return [Group(folder) for folder in folders]
+    groups = []
+    for folder in folders:
+        try:
+            groups.append(Group(folder))
+        except Exception:
+            # Skip folders that don't have valid group.yaml
+            pass
+    return groups
 
 
 def prompt_choice(groups: List[Group]) -> tuple:
@@ -79,9 +86,32 @@ def main():
         metavar="EMAIL",
         help="email the generated CSVs; optionally specify override recipient (e.g., --email admin@company.com)",
     )
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="run in command-line interface mode",
+    )
     args = parser.parse_args()
 
     base = os.getcwd()
+    if not args.cli:
+        # start web interface by default
+        from .ui import create_app
+        app = create_app()
+        import webbrowser
+        import threading
+        import time
+
+        def run_app():
+            app.run(host="127.0.0.1", port=5000, debug=False)
+
+        server_thread = threading.Thread(target=run_app, daemon=True)
+        server_thread.start()
+        time.sleep(1)  # wait a bit for server to start
+        webbrowser.open("http://127.0.0.1:5000")
+        server_thread.join()
+        return
+
     general_cfg = load_general_config(os.path.join(base, "config", "general.yaml"))
     groups = discover_groups(base)
 

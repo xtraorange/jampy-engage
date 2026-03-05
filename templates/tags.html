@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Tags{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1>Tags</h1>
+  <a href="{{ url_for('new_tag') }}" class="btn btn-primary">+ New Tag</a>
+</div>
+<div class="row">
+  {% for tag in tags %}
+    <div class="col-md-4 mb-3">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0">{{ tag }}</h5>
+          <form method="post" action="{{ url_for('delete_tag', tag=tag) }}" style="display: inline;" onsubmit="return confirm('Delete this tag from all groups? This action cannot be undone.');">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+          </form>
+        </div>
+        <div class="card-body">
+          <p class="card-text">Associated Groups:</p>
+          <ul class="list-group list-group-flush">
+            {% for handle in tag_groups[tag] %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                {{ handle }}
+                <a href="{{ url_for('edit_group', handle=handle) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Reports{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>Select Reports to Generate</h1>
+  <form method="post">
+    <div class="row">
+      <div class="col-md-6">
+        <div class="card mb-3">
+          <div class="card-header">
+            <h5 class="mb-0">By Group</h5>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="select-all-groups">
+              <label class="form-check-label" for="select-all-groups">
+                Select All Groups
+              </label>
+            </div>
+          </div>
+          <div class="card-body">
+            {% for g in groups %}
+              <div class="form-check">
+                <input class="form-check-input group-checkbox" type="checkbox" name="groups" value="{{ g.handle }}" id="group-{{ g.handle }}">
+                <label class="form-check-label" for="group-{{ g.handle }}">
+                  {{ g.handle }} ({{ g.display_name }})
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card mb-3">
+          <div class="card-header">
+            <h5 class="mb-0">By Tag</h5>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="select-all-tags">
+              <label class="form-check-label" for="select-all-tags">
+                Select All Tags
+              </label>
+            </div>
+          </div>
+          <div class="card-body">
+            {% for tag in tags %}
+              <div class="form-check">
+                <input class="form-check-input tag-checkbox" type="checkbox" name="tags" value="{{ tag }}" id="tag-{{ tag }}">
+                <label class="form-check-label" for="tag-{{ tag }}">
+                  {{ tag }}
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card mb-3">
+      <div class="card-header">
+        <h5 class="mb-0">Email Options</h5>
+      </div>
+      <div class="card-body">
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="email" id="email">
+          <label class="form-check-label" for="email">
+            Email results
+          </label>
+        </div>
+        <div class="mb-3">
+          <label for="override_email" class="form-label">Override Address</label>
+          <input type="email" class="form-control" id="override_email" name="override_email">
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Start</button>
+  </form>
+</div>
+<script>
+document.getElementById('select-all-groups').addEventListener('change', function() {
+  const checkboxes = document.querySelectorAll('.group-checkbox');
+  checkboxes.forEach(cb => cb.checked = this.checked);
+});
+
+document.getElementById('select-all-tags').addEventListener('change', function() {
+  const checkboxes = document.querySelectorAll('.tag-checkbox');
+  checkboxes.forEach(cb => cb.checked = this.checked);
+});
+</script>
+{% endblock %}

@@ -2,3 +2,4 @@ PyYAML>=5.4
 tqdm>=4.62
 jampy-db @ git+https://github.com/xtraorange/jampy-db.git
 pywin32>=305  # For Outlook integration (Windows only)
+Flask>=2.0  # Web UI

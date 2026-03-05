@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Group {{ group.handle }}{% endblock %}
+
+{% block content %}
+<h1>Edit Group: {{ group.handle }}</h1>
+<form method="post">
+  <div class="row">
+    <div class="col-md-6">
+      <fieldset class="mb-4">
+        <legend class="mb-3">Basic Information</legend>
+        <div class="mb-3">
+          <label for="display_name" class="form-label">Display Name</label>
+          <input type="text" class="form-control" id="display_name" name="display_name" value="{{ config.display_name }}">
+        </div>
+        <div class="mb-3">
+          <label for="tags" class="form-label">Tags (comma-separated)</label>
+          <input type="text" class="form-control" id="tags" name="tags" value="{{ config.tags_str }}">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="mb-3">Output Settings</legend>
+        <div class="mb-3">
+          <label for="email_recipient" class="form-label">Email Recipient</label>
+          <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}">
+        </div>
+        <div class="mb-3">
+          <label for="output_dir" class="form-label">Output Directory Override</label>
+          <div class="input-group">
+            <input type="text" class="form-control" id="output_dir" name="output_dir" value="{{ config.output_dir }}">
+            <button class="btn btn-outline-secondary" type="button" id="browse_output_dir">Browse...</button>
+          </div>
+          <small class="form-text text-muted">Leave empty to use the global output directory</small>
+        </div>
+      </fieldset>
+    </div>
+    <div class="col-md-6">
+      <fieldset>
+        <legend class="mb-3">SQL Query</legend>
+        <div class="mb-3">
+          <label for="query" class="form-label">Query</label>
+          <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;">{{ config.query }}</textarea>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="{{ url_for('groups') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+
+<script>
+  document.getElementById('browse_output_dir').addEventListener('click', async function() {
+    try {
+      const response = await fetch('/api/pick-folder');
+      const data = await response.json();
+      if (data.path) {
+        document.getElementById('output_dir').value = data.path;
+      }
+    } catch (error) {
+      alert('Error opening folder picker: ' + error);
+    }
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Email Templates{% endblock %}
+
+{% block content %}
+<h1>Email Templates</h1>
+
+<ul class="nav nav-tabs mb-4" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="standard-tab" data-bs-toggle="tab" data-bs-target="#standard-content" type="button" role="tab" aria-controls="standard-content" aria-selected="true">
+      Standard Email
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="override-tab" data-bs-toggle="tab" data-bs-target="#override-content" type="button" role="tab" aria-controls="override-content" aria-selected="false">
+      Override Email (Bulk)
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <!-- Standard Template Tab -->
+  <div class="tab-pane fade show active" id="standard-content" role="tabpanel" aria-labelledby="standard-tab">
+    <div class="row">
+      <div class="col-lg-6">
+        <h3>Edit Template</h3>
+        <form method="post">
+          <input type="hidden" name="template_type" value="standard">
+          
+          <div class="mb-3">
+            <label for="std_subject" class="form-label">Subject</label>
+            <input type="text" class="form-control font-monospace" id="std_subject" name="subject" value="{{ std_template.subject }}" required>
+            <small class="form-text text-muted">Available variables: {group_name}, {group_handle}, {date}, {count}</small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="std_body" class="form-label">Body</label>
+            <textarea class="form-control font-monospace" id="std_body" name="body" rows="12" required style="font-size: 0.9rem;">{{ std_template.body }}</textarea>
+            <small class="form-text text-muted">Available variables: {group_name}, {group_handle}, {date}, {count}</small>
+          </div>
+          
+          <button type="submit" class="btn btn-primary">Save Template</button>
+        </form>
+      </div>
+      
+      <div class="col-lg-6">
+        <h3>Template Variables</h3>
+        <div class="alert alert-info">
+          <dl class="mb-0">
+            <dt><code>{group_name}</code></dt>
+            <dd>The display name of the community</dd>
+            
+            <dt><code>{group_handle}</code></dt>
+            <dd>The handle/ID of the community</dd>
+            
+            <dt><code>{date}</code></dt>
+            <dd>The generation date (YYYY-MM-DD)</dd>
+            
+            <dt><code>{count}</code></dt>
+            <dd>The number of members in the list</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Override Template Tab -->
+  <div class="tab-pane fade" id="override-content" role="tabpanel" aria-labelledby="override-tab">
+    <div class="row">
+      <div class="col-lg-6">
+        <h3>Edit Template</h3>
+        <form method="post">
+          <input type="hidden" name="template_type" value="override">
+          
+          <div class="mb-3">
+            <label for="ovr_subject" class="form-label">Subject</label>
+            <input type="text" class="form-control font-monospace" id="ovr_subject" name="subject" value="{{ override_template.subject }}" required>
+            <small class="form-text text-muted">Available variables: {date}, {count}, {groups_list}</small>
+          </div>
+          
+          <div class="mb-3">
+            <label for="ovr_body" class="form-label">Body</label>
+            <textarea class="form-control font-monospace" id="ovr_body" name="body" rows="12" required style="font-size: 0.9rem;">{{ override_template.body }}</textarea>
+            <small class="form-text text-muted">Available variables: {date}, {count}, {groups_list}</small>
+          </div>
+          
+          <button type="submit" class="btn btn-primary">Save Template</button>
+        </form>
+      </div>
+      
+      <div class="col-lg-6">
+        <h3>Template Variables</h3>
+        <div class="alert alert-info">
+          <dl class="mb-0">
+            <dt><code>{date}</code></dt>
+            <dd>The generation date (YYYY-MM-DD)</dd>
+            
+            <dt><code>{count}</code></dt>
+            <dd>The total number of groups in this batch</dd>
+            
+            <dt><code>{groups_list}</code></dt>
+            <dd>A newline-separated list of CSV file names</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Restore Backup{% endblock %}
+
+{% block content %}
+<h1>Restore Configuration Backup</h1>
+
+<div class="row">
+  <div class="col-md-8">
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    <div class="alert alert-warning">
+      <strong>Warning:</strong> Restoring a backup will overwrite your current configuration and groups. Make sure you have backed up your current setup first.
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label for="backup_file" class="form-label">Select Backup File <span class="text-danger">*</span></label>
+        <input type="file" class="form-control" id="backup_file" name="file" accept=".zip" required>
+        <small class="form-text text-muted">Select a .zip file created by the Backup function</small>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Restore Backup</button>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+
+    <hr>
+
+    <h4 class="mt-4">Backup Instructions</h4>
+    <ol>
+      <li>Click the "Backup" link in the navigation to download a zip file of your current configuration</li>
+      <li>Store this file safely as a backup</li>
+      <li>To restore, upload the zip file using the form above</li>
+    </ol>
+  </div>
+</div>
+{% endblock %}

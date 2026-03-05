@@ -1,0 +1,494 @@
+"""Web UI for managing configuration and running reports."""
+from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file
+import threading
+from concurrent.futures import ThreadPoolExecutor
+import os
+import yaml
+import shutil
+import zipfile
+from io import BytesIO
+from datetime import datetime, timedelta
+import json
+import urllib.request
+import subprocess
+import sys
+
+from .generate_reports import discover_groups, process_group, _send_override_email
+from .config import load_general_config
+from .db import DatabaseExecutor, ProgressTracker
+from .group import Group
+from .email_template import load_email_template, load_override_email_template
+
+# version tracking
+__version__ = "0.1.0"  # bump this whenever a new release is published
+GITHUB_REPO = "youruser/jampy-engage"  # change to actual owner/repo
+CHECK_INTERVAL_SECONDS = 24 * 60 * 60  # check GitHub no more than once per day
+
+
+def create_app():
+    base = os.getcwd()
+    # ensure templates folder is located at workspace root
+    app = Flask(__name__, template_folder=os.path.join(base, "templates"))
+    general_path = os.path.join(base, "config", "general.yaml")
+
+    def load_general():
+        return load_general_config(general_path)
+
+    def save_general(cfg: dict):
+        with open(general_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(cfg, f)
+
+    def load_groups():
+        return discover_groups(base)
+
+    def save_group(group: Group, data: dict):
+        cfg_path = os.path.join(group.folder, "group.yaml")
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f)
+
+    def _parse_version(v: str):
+        return tuple(int(x) for x in v.lstrip('v').split('.') if x.isdigit())
+
+    def _is_newer(latest: str, current: str) -> bool:
+        try:
+            return _parse_version(latest) > _parse_version(current)
+        except Exception:
+            return latest != current
+
+    def check_for_updates(cfg: dict) -> dict:
+        now = datetime.now()
+        last = cfg.get("last_update_check")
+        should_fetch = True
+        if last:
+            try:
+                last_dt = datetime.fromisoformat(last)
+                if (now - last_dt).total_seconds() < CHECK_INTERVAL_SECONDS:
+                    should_fetch = False
+            except Exception:
+                should_fetch = True
+        info = cfg.get("update_info") or {}
+        if should_fetch:
+            try:
+                url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+                with urllib.request.urlopen(url) as resp:
+                    data = json.load(resp)
+                info = data
+                cfg["update_info"] = info
+                cfg["last_update_check"] = now.isoformat()
+                save_general(cfg)
+            except Exception:
+                pass
+        return info
+
+    @app.route("/settings", methods=["GET", "POST"])
+    def index():
+        cfg = load_general()
+        # settings page no longer checks updates directly
+        if request.method == "POST":
+            # update general config based on form fields
+            for key in [
+                "oracle_tns",
+                "output_dir",
+                "max_workers",
+                "email_method",
+                "outlook_auto_send",
+                "smtp_server",
+                "smtp_port",
+                "smtp_use_tls",
+                "smtp_from",
+                "email_recipient",
+            ]:
+                if key in request.form:
+                    val = request.form.get(key)
+                    if val == "":
+                        cfg.pop(key, None)
+                    else:
+                        if key in ["max_workers", "smtp_port"]:
+                            try:
+                                cfg[key] = int(val)
+                            except ValueError:
+                                cfg[key] = val
+                        elif key in ["smtp_use_tls", "outlook_auto_send"]:
+                            cfg[key] = request.form.get(key) == "on"
+                        else:
+                            cfg[key] = val
+            save_general(cfg)
+            return redirect(url_for("index"))
+        groups = load_groups()
+        return render_template("index.html", config=cfg, groups=groups,
+                               updating=app.config.get("updating"),
+                               update_error=app.config.get("update_error"))
+
+    @app.route("/updates", methods=["GET", "POST"])
+    def updates():
+        cfg = load_general()
+        update_info = check_for_updates(cfg)
+        update_available = False
+        if update_info and update_info.get("tag_name"):
+            update_available = _is_newer(update_info.get("tag_name"), __version__)
+        if request.method == "POST":
+            # trigger manual update via perform_update
+            return redirect(url_for("perform_update"))
+        return render_template("updates.html",
+                               current_version=__version__,
+                               update_info=update_info,
+                               update_available=update_available,
+                               updating=app.config.get("updating"),
+                               update_error=app.config.get("update_error"))
+
+    @app.route("/update", methods=["POST"])
+    def perform_update():
+        if app.config.get("updating"):
+            return redirect(url_for("index"))
+        app.config["updating"] = True
+        def updater():
+            try:
+                subprocess.run(["git", "pull"], cwd=base, check=True)
+                subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=base, check=True)
+            except Exception as e:
+                app.config["update_error"] = str(e)
+            finally:
+                app.config["updating"] = False
+        threading.Thread(target=updater, daemon=True).start()
+        return redirect(url_for("index"))
+
+    @app.route("/groups")
+    def groups():
+        if app.config.get("updating"):
+            return "Update in progress, please wait and refresh after restart", 503
+        groups = load_groups()
+        return render_template("groups.html", groups=groups)
+
+    @app.route("/tags")
+    def tags():
+        if app.config.get("updating"):
+            return "Update in progress, please wait and refresh after restart", 503
+        groups = load_groups()
+        all_tags = set()
+        tag_groups = {}
+        for g in groups:
+            for t in g.tags:
+                all_tags.add(t)
+                if t not in tag_groups:
+                    tag_groups[t] = []
+                tag_groups[t].append(g.handle)
+        return render_template("tags.html", tags=sorted(all_tags), tag_groups=tag_groups)
+
+    @app.route("/group/<handle>", methods=["GET", "POST"])
+    def edit_group(handle):
+        if app.config.get("updating"):
+            return "Update in progress, please wait and refresh after restart", 503
+        groups = load_groups()
+        group = next((g for g in groups if g.handle == handle), None)
+        if group is None:
+            return "Group not found", 404
+        cfg = group.config.copy()
+        if request.method == "POST":
+            # update properties
+            cfg["display_name"] = request.form.get("display_name", cfg.get("display_name"))
+            tags = request.form.get("tags", "")
+            cfg["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
+            cfg["email_recipient"] = request.form.get("email_recipient", cfg.get("email_recipient"))
+            outdir = request.form.get("output_dir", "")
+            if outdir:
+                cfg["output_dir"] = outdir
+            # update query if provided
+            query = request.form.get("query", "").strip()
+            if query:
+                with open(group.query_file, "w", encoding="utf-8") as f:
+                    f.write(query)
+            save_group(group, cfg)
+            return redirect(url_for("groups"))
+        # prepare tag string and load query
+        cfg["tags_str"] = ",".join(cfg.get("tags", []))
+        cfg["query"] = group.read_query()
+        return render_template("group.html", group=group, config=cfg)
+
+    @app.route("/group/new", methods=["GET", "POST"])
+    def new_group():
+        if request.method == "POST":
+            handle = request.form.get("handle", "").strip()
+            if not handle or not handle.replace("_", "").replace("-", "").isalnum():
+                return "Invalid group handle", 400
+            
+            # create group directory
+            group_dir = os.path.join(base, "groups", handle)
+            if os.path.exists(group_dir):
+                return "Group already exists", 400
+            
+            os.makedirs(group_dir, exist_ok=True)
+            
+            # create group.yaml
+            cfg = {
+                "handle": handle,
+                "display_name": request.form.get("display_name", handle),
+                "tags": [t.strip() for t in request.form.get("tags", "").split(",") if t.strip()],
+            }
+            email_recipient = request.form.get("email_recipient", "").strip()
+            if email_recipient:
+                cfg["email_recipient"] = email_recipient
+            
+            group_cfg_path = os.path.join(group_dir, "group.yaml")
+            with open(group_cfg_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(cfg, f)
+            
+            # create query.sql
+            query = request.form.get("query", "SELECT * FROM dual;").strip()
+            query_path = os.path.join(group_dir, "query.sql")
+            with open(query_path, "w", encoding="utf-8") as f:
+                f.write(query)
+            
+            return redirect(url_for("groups"))
+        
+        return render_template("group_new.html")
+
+    @app.route("/", methods=["GET", "POST"])
+    def generate():
+        if app.config.get("updating"):
+            return "Update in progress, please wait and refresh after restart", 503
+        groups = load_groups()
+        cfg = load_general()
+        if request.method == "POST":
+            selected_handles = request.form.getlist("groups")
+            selected = [g for g in groups if g.handle in selected_handles]
+            tag_sel = request.form.getlist("tags")
+            for t in tag_sel:
+                for g in groups:
+                    if t in g.tags and g not in selected:
+                        selected.append(g)
+            should_email = request.form.get("email") == "on"
+            override = request.form.get("override_email") or None
+            tracker = start_jobs(selected, should_email, override)
+            app.config["tracker"] = tracker
+            return redirect(url_for("status"))
+        tags = set()
+        for g in groups:
+            tags.update(g.tags)
+        tags = sorted(tags)
+        return render_template("generate.html", groups=groups, tags=tags)
+
+    @app.route("/status")
+    def status():
+        if app.config.get("updating"):
+            return "Update in progress, please wait and refresh after restart", 503
+        tracker = app.config.get("tracker")
+        if not tracker:
+            return redirect(url_for("generate"))
+        return render_template("status.html", tracker=tracker)
+
+    @app.route("/api/status")
+    def api_status():
+        tracker = app.config.get("tracker")
+        if not tracker:
+            return jsonify(error="No job running")
+        return jsonify(status=tracker.status, done=tracker.done, total=tracker.total)
+
+    @app.route("/email-templates", methods=["GET", "POST"])
+    def email_templates():
+        templates_path = os.path.join(base, "config")
+        std_template = load_email_template(templates_path)
+        override_template = load_override_email_template(templates_path)
+        
+        if request.method == "POST":
+            template_type = request.form.get("template_type")
+            subject = request.form.get("subject")
+            body = request.form.get("body")
+            
+            if template_type == "standard":
+                filepath = os.path.join(templates_path, "email_template.yaml")
+            else:
+                filepath = os.path.join(templates_path, "email_template_override.yaml")
+            
+            with open(filepath, "w", encoding="utf-8") as f:
+                yaml.safe_dump({"subject": subject, "body": body}, f)
+            
+            return redirect(url_for("email_templates"))
+        
+        return render_template("email_templates.html", 
+                             std_template=std_template, 
+                             override_template=override_template)
+
+    @app.route("/group/<handle>/delete", methods=["POST"])
+    def delete_group(handle):
+        groups = load_groups()
+        group = next((g for g in groups if g.handle == handle), None)
+        if group is None:
+            return "Group not found", 404
+        
+        try:
+            # For Windows, remove read-only attributes first and handle file locks
+            import stat, time
+            def _onrmerror(func, path, exc_info):
+                try:
+                    os.chmod(path, stat.S_IWRITE)
+                    func(path)
+                except Exception:
+                    pass
+            # walk and chmod
+            for root, dirs, files in os.walk(group.folder):
+                for name in files + dirs:
+                    path = os.path.join(root, name)
+                    try:
+                        os.chmod(path, stat.S_IWRITE)
+                    except Exception:
+                        pass
+
+            # try removing up to a few times
+            for attempt in range(4):
+                try:
+                    shutil.rmtree(group.folder, onerror=_onrmerror)
+                    break
+                except PermissionError:
+                    time.sleep(0.5)
+            # final check
+            if os.path.exists(group.folder):
+                return f"Error deleting group: folder still exists", 500
+            return redirect(url_for("groups"))
+        except Exception as e:
+            return f"Error deleting group: {str(e)}", 500
+
+    @app.route("/tag/<tag>/delete", methods=["POST"])
+    def delete_tag(tag):
+        groups = load_groups()
+        for group in groups:
+            if tag in group.tags:
+                group.config["tags"] = [t for t in group.config.get("tags", []) if t != tag]
+                save_group(group, group.config)
+        return redirect(url_for("tags"))
+
+    @app.route("/tag/new", methods=["GET", "POST"])
+    def new_tag():
+        groups = load_groups()
+        if request.method == "POST":
+            tag_name = request.form.get("tag_name", "").strip()
+            if not tag_name:
+                return render_template("tag_new.html", groups=groups, error="Tag name is required")
+            
+            selected_groups = request.form.getlist("groups")
+            for group in groups:
+                if group.handle in selected_groups:
+                    if tag_name not in group.tags:
+                        group.config["tags"] = group.config.get("tags", []) + [tag_name]
+                        save_group(group, group.config)
+            
+            return redirect(url_for("tags"))
+        
+        return render_template("tag_new.html", groups=groups, error=None)
+
+    @app.route("/backup")
+    def backup():
+        """Create a zip backup of all configuration and groups."""
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Add config files
+            config_path = os.path.join(base, "config")
+            for filename in os.listdir(config_path):
+                if filename.endswith((".yaml", ".yml")):
+                    file_path = os.path.join(config_path, filename)
+                    zf.write(file_path, os.path.join("config", filename))
+            
+            # Add groups
+            groups_path = os.path.join(base, "groups")
+            if os.path.exists(groups_path):
+                for root, dirs, files in os.walk(groups_path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, base)
+                        zf.write(file_path, arcname)
+        
+        zip_buffer.seek(0)
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'jampy-backup-{datetime.now().strftime("%Y%m%d-%H%M%S")}.zip'
+        )
+
+    @app.route("/restore", methods=["GET", "POST"])
+    def restore():
+        if request.method == "POST":
+            if 'file' not in request.files:
+                return render_template("restore.html", error="No file provided")
+            
+            file = request.files['file']
+            if not file.filename.endswith('.zip'):
+                return render_template("restore.html", error="File must be a zip archive")
+            
+            try:
+                with zipfile.ZipFile(file, 'r') as zf:
+                    zf.extractall(base)
+                return redirect(url_for("index"))
+            except Exception as e:
+                return render_template("restore.html", error=f"Error restoring backup: {str(e)}")
+        
+        return render_template("restore.html", error=None)
+
+
+    def start_jobs(selected, should_email, override_email):
+        general_cfg = load_general()
+        executor = DatabaseExecutor(general_cfg.get("oracle_tns"))
+        max_workers = general_cfg.get("max_workers") or os.cpu_count() or 4
+        tracker = ProgressTracker(len(selected))
+        csv_files = []
+
+        def task():
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = []
+                for idx, g in enumerate(selected, start=1):
+                    futures.append(
+                        pool.submit(
+                            process_group,
+                            g,
+                            general_cfg,
+                            executor,
+                            tracker,
+                            should_email=should_email,
+                            override_email=override_email,
+                            job_num=idx,
+                            job_total=len(selected),
+                        )
+                    )
+                for fut in futures:
+                    res = fut.result()
+                    if override_email and res:
+                        csv_files.append(res)
+            try:
+                executor.close()
+            except Exception:
+                pass
+            if override_email and csv_files:
+                date_str = datetime.now().strftime("%y-%m-%d")
+                groups_list = "\n".join([os.path.basename(f) for f in csv_files])
+                _send_override_email(override_email, general_cfg, csv_files, groups_list, date_str, len(selected))
+
+        threading.Thread(target=task, daemon=True).start()
+        return tracker
+
+    @app.route("/api/pick-folder")
+    def pick_folder():
+        """Open a native folder picker dialog and return the selected path."""
+        try:
+            import tkinter as tk
+            from tkinter.filedialog import askdirectory
+            
+            # Create a hidden root window
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            
+            # Open folder picker
+            folder = askdirectory(title="Select a folder")
+            root.destroy()
+            
+            if folder:
+                return jsonify(path=folder)
+            else:
+                # user cancelled; not an error
+                return jsonify(cancelled=True)
+        except ImportError:
+            return jsonify(error="tkinter not installed"), 200
+        except Exception as e:
+            # catch tkinter/display errors and return gracefully
+            return jsonify(error=str(e)), 200
+
+    return app

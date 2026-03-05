@@ -1,11 +1,6 @@
-handle: "vivatestgroup"   # immutable reference
-display_name: "Viva Test Group"          # friendly name for output
-# output_dir: "./special-location"   # override general output directory
-
+display_name: Viva Test Group
+email_recipient: jareynol@fastenal.com
+handle: vivatestgroup
 tags:
-  - test
-
-email_recipient: "jareynol@fastenal.com"  # optional override for email recipient
-# Optional email address for sending the CSV to when --email flag is used.
-# If not specified, global email_recipient from general.yaml is used.
-# email_recipient: "group-admin@fastenal.com"
+- test
+- New tag

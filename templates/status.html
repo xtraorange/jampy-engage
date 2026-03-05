@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Generation Status{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>Generation Status</h1>
+  <div class="card">
+    <div class="card-header">
+      <h5>Overall Progress</h5>
+    </div>
+    <div class="card-body">
+      <div class="progress mb-3">
+        <div class="progress-bar" role="progressbar" style="width: 0%" id="overall-progress"></div>
+      </div>
+      <p id="overall-status">Initializing...</p>
+    </div>
+  </div>
+  <div class="card mt-3">
+    <div class="card-header">
+      <h5>Group Status</h5>
+    </div>
+    <div class="card-body">
+      <ul class="list-group" id="group-status">
+        <!-- Status items will be populated by JS -->
+      </ul>
+    </div>
+  </div>
+  <div class="mt-3">
+    <a href="{{ url_for('generate') }}" class="btn btn-secondary">Back to Generate</a>
+  </div>
+</div>
+
+<script>
+function updateStatus() {
+  fetch('/api/status')
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        document.getElementById('overall-status').textContent = data.error;
+        return;
+      }
+      const total = data.total;
+      const done = data.done;
+      const progressPercent = total > 0 ? (done / total) * 100 : 0;
+      document.getElementById('overall-progress').style.width = progressPercent + '%';
+      document.getElementById('overall-status').textContent = `Completed ${done} of ${total} groups`;
+
+      const groupStatus = document.getElementById('group-status');
+      groupStatus.innerHTML = '';
+      for (const [handle, status] of Object.entries(data.status)) {
+        const li = document.createElement('li');
+        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+        li.innerHTML = `
+          ${handle}
+          <span class="badge bg-${status === 'completed' ? 'success' : status === 'running' ? 'primary' : 'secondary'}">${status}</span>
+        `;
+        groupStatus.appendChild(li);
+      }
+
+      if (done < total) {
+        setTimeout(updateStatus, 1000); // Update every second
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching status:', error);
+      document.getElementById('overall-status').textContent = 'Error loading status';
+    });
+}
+
+updateStatus();
+</script>
+{% endblock %}

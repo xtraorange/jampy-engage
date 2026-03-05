@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Tag{% endblock %}
+
+{% block content %}
+<h1>Create New Tag</h1>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="row">
+  <div class="col-md-8">
+    <form method="post">
+      <div class="mb-3">
+        <label for="tag_name" class="form-label">Tag Name <span class="text-danger">*</span></label>
+        <input type="text" class="form-control" id="tag_name" name="tag_name" placeholder="e.g., important, monthly" required>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Add to Groups</label>
+        <div class="border rounded p-3" style="max-height: 400px; overflow-y: auto;">
+          {% if groups %}
+            {% for group in groups %}
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="groups" value="{{ group.handle }}" id="group_{{ group.handle }}">
+                <label class="form-check-label" for="group_{{ group.handle }}">
+                  <strong>{{ group.handle }}</strong> - {{ group.display_name }}
+                </label>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted">No groups available</p>
+          {% endif %}
+        </div>
+        <small class="form-text text-muted">Select which groups should have this tag assigned</small>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Create Tag</button>
+        <a href="{{ url_for('tags') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

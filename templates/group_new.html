@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Group{% endblock %}
+
+{% block content %}
+<h1>Create New Group</h1>
+<form method="post">
+  <div class="row">
+    <div class="col-md-6">
+      <fieldset class="mb-4">
+        <legend class="mb-3">Basic Information</legend>
+        <div class="mb-3">
+          <label for="handle" class="form-label">Group Handle <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="handle" name="handle" placeholder="e.g., sales_team" required>
+          <small class="form-text text-muted">Alphanumeric characters, hyphens, and underscores only</small>
+        </div>
+        <div class="mb-3">
+          <label for="display_name" class="form-label">Display Name</label>
+          <input type="text" class="form-control" id="display_name" name="display_name" placeholder="e.g., Sales Team">
+        </div>
+        <div class="mb-3">
+          <label for="tags" class="form-label">Tags (comma-separated)</label>
+          <input type="text" class="form-control" id="tags" name="tags" placeholder="e.g., important, monthly">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="mb-3">Output Settings</legend>
+        <div class="mb-3">
+          <label for="email_recipient" class="form-label">Email Recipient</label>
+          <input type="email" class="form-control" id="email_recipient" name="email_recipient">
+        </div>
+      </fieldset>
+    </div>
+    <div class="col-md-6">
+      <fieldset>
+        <legend class="mb-3">SQL Query</legend>
+        <div class="mb-3">
+          <label for="query" class="form-label">Query</label>
+          <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;">SELECT * FROM dual;</textarea>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">Create Group</button>
+    <a href="{{ url_for('groups') }}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

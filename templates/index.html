@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}App Settings{% endblock %}
+
+{% block content %}
+<h1>General Settings</h1>
+<form method="post" class="mb-4">
+  <div class="row">
+    <div class="col-md-6">
+      <fieldset class="mb-4">
+        <legend class="mb-3">
+          Database Settings
+        </legend>
+        <div class="mb-3">
+          <label for="oracle_tns" class="form-label">
+            Oracle TNS
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="The Oracle TNS string for your database connection (e.g., tnsname or full connection string)">?</span>
+          </label>
+          <input type="text" class="form-control" id="oracle_tns" name="oracle_tns" value="{{ config.oracle_tns }}" placeholder="e.g., MYDB or server:1521/MYDB">
+        </div>
+      </fieldset>
+
+      <fieldset class="mb-4">
+        <legend class="mb-3">
+          Output Settings
+        </legend>
+        <div class="mb-3">
+          <label for="output_dir" class="form-label">
+            Output Directory
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Where CSV files will be saved. Can be an absolute path or relative to current directory.">?</span>
+          </label>
+          <div class="input-group">
+            <input type="text" class="form-control" id="output_dir" name="output_dir" value="{{ config.output_dir }}" placeholder="e.g., ./output or C:\\Reports">
+            <button class="btn btn-outline-secondary" type="button" id="browse_output_dir">Browse...</button>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label for="max_workers" class="form-label">
+            Max Workers
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Number of parallel jobs to run. Set to CPU count for optimal performance.">?</span>
+          </label>
+          <input type="number" class="form-control" id="max_workers" name="max_workers" value="{{ config.max_workers }}" placeholder="Defaults to CPU count">
+        </div>
+      </fieldset>
+    </div>
+    <div class="col-md-6">
+      <fieldset class="mb-4">
+        <legend class="mb-3">
+          Email Settings
+        </legend>
+        <div class="mb-3">
+          <label for="email_method" class="form-label">
+            Email Method
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="SMTP: send via an SMTP server | Outlook: send via Outlook application">?</span>
+          </label>
+          <select class="form-select" id="email_method" name="email_method">
+            <option value="smtp" {% if config.get('email_method')=='smtp' %}selected{% endif %}>SMTP</option>
+            <option value="outlook" {% if config.get('email_method')=='outlook' %}selected{% endif %}>Outlook</option>
+          </select>
+        </div>
+        <div class="mb-3 form-check">
+          <input type="checkbox" class="form-check-input" id="outlook_auto_send" name="outlook_auto_send" {% if config.get('outlook_auto_send') %}checked{% endif %}>
+          <label class="form-check-label" for="outlook_auto_send">
+            Outlook Auto Send
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="If checked, emails will be sent automatically. If unchecked, they'll open in Outlook for manual review.">?</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="mb-3">
+          SMTP Settings
+        </legend>
+        <div class="mb-3">
+          <label for="smtp_server" class="form-label">
+            SMTP Server
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Hostname or IP of your SMTP server (e.g., smtp.gmail.com, mail.company.com)">?</span>
+          </label>
+          <input type="text" class="form-control" id="smtp_server" name="smtp_server" value="{{ config.smtp_server }}" placeholder="e.g., smtp.gmail.com">
+        </div>
+        <div class="mb-3">
+          <label for="smtp_port" class="form-label">
+            SMTP Port
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Port number: typically 25 (plain), 587 (TLS), or 465 (SSL)">?</span>
+          </label>
+          <input type="number" class="form-control" id="smtp_port" name="smtp_port" value="{{ config.smtp_port }}" placeholder="e.g., 587">
+        </div>
+        <div class="mb-3 form-check">
+          <input type="checkbox" class="form-check-input" id="smtp_use_tls" name="smtp_use_tls" {% if config.get('smtp_use_tls') %}checked{% endif %}>
+          <label class="form-check-label" for="smtp_use_tls">
+            Use TLS
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Enable TLS encryption for the SMTP connection">?</span>
+          </label>
+        </div>
+        <div class="mb-3">
+          <label for="smtp_from" class="form-label">
+            From Address
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Email address that reports will be sent from">?</span>
+          </label>
+          <input type="email" class="form-control" id="smtp_from" name="smtp_from" value="{{ config.smtp_from }}" placeholder="e.g., noreply@company.com">
+        </div>
+        <div class="mb-3">
+          <label for="email_recipient" class="form-label">
+            Default Recipient
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Default email address for report delivery (can be overridden per group)">?</span>
+          </label>
+          <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}" placeholder="e.g., reports@company.com">
+        </div>
+      </fieldset>
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Save</button>
+</form>
+
+<script>
+  // Initialize Bootstrap tooltips
+  const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+  const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+  })
+
+  // Folder picker for output directory
+  document.getElementById('browse_output_dir').addEventListener('click', async function() {
+    try {
+      const response = await fetch('/api/pick-folder');
+      const data = await response.json();
+      if (data.path) {
+        document.getElementById('output_dir').value = data.path;
+      } else if (data.cancelled) {
+        alert('Folder picker cancelled or not available on this server. Please type the path manually.');
+      } else if (data.error) {
+        alert('Folder picker error: ' + data.error + '\nThis feature requires a local GUI environment and may not work on remote servers.');
+      }
+    } catch (error) {
+      alert('Error opening folder picker: ' + error + '\nThis feature only works when the server can display dialogs locally.');
+    }
+  });
+</script>
+{% endblock %}

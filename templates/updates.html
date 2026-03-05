@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Application Updates{% endblock %}
+
+{% block content %}
+<h1>Application Updates</h1>
+
+{% if update_error %}
+<div class="alert alert-danger">Update error: {{ update_error }}</div>
+{% endif %}
+
+{% if updating %}
+<div class="alert alert-warning">Update in progress, functionality is temporarily disabled. Please wait and restart the app when it finishes.</div>
+{% endif %}
+
+<p>Current version: <strong>{{ current_version }}</strong></p>
+
+{% if update_info %}
+  <p>Latest release: <strong>{{ update_info.tag_name }}</strong></p>
+  <details>
+    <summary>Release notes</summary>
+    <pre class="p-2" style="white-space: pre-wrap;">{{ update_info.body }}</pre>
+  </details>
+{% endif %}
+
+{% if update_available and not updating %}
+<form method="post" onsubmit="return confirm('Updating will pull latest changes and may restart the application. Continue?');">
+  <button type="submit" class="btn btn-primary">Update now</button>
+</form>
+{% elif not update_available %}
+<p class="text-success">You are up to date.</p>
+{% endif %}
+
+<form method="get" action="{{ url_for('updates') }}">
+  <button type="submit" class="btn btn-link">Check again</button>
+</form>
+
+{% endblock %}
