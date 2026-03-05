@@ -13,10 +13,10 @@
 <div class="alert alert-warning">Update in progress, functionality is temporarily disabled. Please wait and restart the app when it finishes.</div>
 {% endif %}
 
-<p>Current version: <strong>{{ current_version }}</strong></p>
+<p>Current version: <strong>v{{ current_version }}</strong></p>
 
 {% if update_info %}
-  <p>Latest release: <strong>{{ update_info.tag_name }}</strong></p>
+  <p>Latest release: <strong>v{{ update_info.tag_name }}</strong></p>
   <details>
     <summary>Release notes</summary>
     <pre class="p-2" style="white-space: pre-wrap;">{{ update_info.body }}</pre>

@@ -65,10 +65,7 @@ Write-Host "    Installation Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "To start the application:" -ForegroundColor White
-Write-Host "  1. Open File Explorer and navigate to: $TargetDir" -ForegroundColor Yellow
-Write-Host "  2. Double-click 'start.bat'" -ForegroundColor Yellow
+Write-Host "  Double-click 'start.bat' in the installation directory" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "The browser will automatically open to: http://localhost:5000" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "Alternative: Run '.\start.ps1' in PowerShell from the install directory" -ForegroundColor Cyan
 Write-Host ""
