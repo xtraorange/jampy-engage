@@ -15,26 +15,28 @@
 
 <p>Current version: <strong>v{{ current_version }}</strong></p>
 
-{% if update_info %}
-  <p>Latest release: <strong>v{{ update_info.tag_name }}</strong></p>
+{% if update_info and update_info.version %}
+  <p>Latest release: <strong>v{{ update_info.version }}</strong></p>
   {% if update_info.last_check %}
-    <p>Last checked: <strong>{{ update_info.last_check }}</strong></p>
+    <p class="text-muted small">Last checked: {{ update_info.last_check }}</p>
   {% endif %}
-  <details>
-    <summary>Release notes</summary>
-    <pre class="p-2" style="white-space: pre-wrap;">{{ update_info.body }}</pre>
-  </details>
+  {% if update_info.body %}
+    <details>
+      <summary>Release notes</summary>
+      <pre class="p-2" style="white-space: pre-wrap;">{{ update_info.body }}</pre>
+    </details>
+  {% endif %}
 {% endif %}
 
 {% if update_available and not updating %}
 <form method="post" onsubmit="return confirm('Updating will pull latest changes and may restart the application. Continue?');">
   <button type="submit" class="btn btn-primary">Update now</button>
 </form>
-{% elif not update_available %}
+{% elif not update_available and update_info %}
 <p class="text-success">You are up to date.</p>
 {% endif %}
 
-<form method="get" action="{{ url_for('updates', force='true') }}">
+<form method="get" action="{{ url_for('updates', check='true') }}">
   <button type="submit" class="btn btn-link">Check again</button>
 </form>
 

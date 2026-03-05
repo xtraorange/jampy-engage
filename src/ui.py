@@ -45,6 +45,14 @@ def create_app():
     app = Flask(__name__, template_folder=os.path.join(base, "templates"))
     general_path = os.path.join(base, "config", "general.yaml")
 
+    # Make updating and update_status available to all templates
+    @app.context_processor
+    def inject_update_status():
+        return {
+            "updating": app.config.get("updating"),
+            "update_status": app.config.get("update_status")
+        }
+
     def load_general():
         return load_general_config(general_path)
 
@@ -178,11 +186,14 @@ def create_app():
     @app.route("/updates", methods=["GET", "POST"])
     def updates():
         cfg = load_general()
-        force_check = request.args.get("force") == "true"
-        update_info = check_for_updates(cfg, force=force_check)
+        # if user clicked "check again", clear the old info first
+        if request.args.get("check") == "true":
+            cfg["update_info"] = {}
+            save_general(cfg)
+        update_info = check_for_updates(cfg)
         update_available = False
-        if update_info and update_info.get("tag_name"):
-            update_available = _is_newer(update_info.get("tag_name"), __version__)
+        if update_info and update_info.get("version"):
+            update_available = _is_newer(update_info.get("version"), __version__)
         if request.method == "POST":
             # trigger manual update via perform_update
             return redirect(url_for("perform_update"))
@@ -191,6 +202,7 @@ def create_app():
                                update_info=update_info,
                                update_available=update_available,
                                updating=app.config.get("updating"),
+                               update_status=app.config.get("update_status"),
                                update_error=app.config.get("update_error"))
 
     @app.route("/update", methods=["GET", "POST"])
@@ -198,11 +210,14 @@ def create_app():
         if app.config.get("updating"):
             return redirect(url_for("index"))
         app.config["updating"] = True
+        app.config["update_status"] = "Starting update..."
         def updater():
             try:
-                # pull latest code and reinstall dependencies
-                res = subprocess.run(["git", "pull"], cwd=base, capture_output=True, text=True, check=True)
-                res2 = subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=base, capture_output=True, text=True, check=True)
+                app.config["update_status"] = "Pulling latest code..."
+                subprocess.run(["git", "pull"], cwd=base, capture_output=True, text=True, check=True)
+                app.config["update_status"] = "Installing dependencies..."
+                subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=base, capture_output=True, text=True, check=True)
+                app.config["update_status"] = "Update complete! Please restart the app."
             except subprocess.CalledProcessError as e:
                 msg = f"Command '{e.cmd}' failed (exit {e.returncode})"
                 if e.stdout:
@@ -210,8 +225,10 @@ def create_app():
                 if e.stderr:
                     msg += f"\nstderr: {e.stderr.strip()}"
                 app.config["update_error"] = msg
+                app.config["update_status"] = "Update failed. See error below."
             except Exception as e:
                 app.config["update_error"] = str(e)
+                app.config["update_status"] = "Update failed."
             finally:
                 app.config["updating"] = False
         threading.Thread(target=updater, daemon=True).start()

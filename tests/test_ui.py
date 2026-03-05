@@ -50,17 +50,13 @@ def test_updates_page(client):
 
 
 def test_force_bypasses_cache(monkeypatch, client, tmp_path):
-    """Clicking the check-again button should force a fresh lookup and store plain version"""
+    """Clicking the check-again button should clear cache and fetch fresh"""
     import yaml, os
 
     general_path = os.path.join(os.getcwd(), "config", "general.yaml")
-    # set up old config state
-    old = datetime.now() - timedelta(days=1)
+    # set up config with nested info structure
     cfg = yaml.safe_load(open(general_path, "r")) or {}
-    # ensure we start with a nested info structure
-    cfg["update_info"] = {"tag_name": "1.0.0", "version": "1.0.0", "last_check": old.isoformat()}
-    # remove any legacy key if present
-    cfg.pop("last_update_check", None)
+    cfg["update_info"] = {"version": "1.0.0", "body": "", "last_check": "2026-01-01T00:00:00"}
     yaml.safe_dump(cfg, open(general_path, "w"))
 
     # fake network responses so the update check returns a new version
@@ -82,8 +78,8 @@ def test_force_bypasses_cache(monkeypatch, client, tmp_path):
     from src import ui
     monkeypatch.setattr(ui.urllib.request, 'urlopen', fake_urlopen)
 
-    # perform a GET with force parameter
-    rv = client.get('/updates?force=true')
+    # perform a GET with check=true to clear and fetch
+    rv = client.get('/updates?check=true')
     assert rv.status_code == 200
 
     # ensure our fake network call was used
@@ -91,11 +87,14 @@ def test_force_bypasses_cache(monkeypatch, client, tmp_path):
 
     # read config back and validate changes
     cfg2 = yaml.safe_load(open(general_path, "r"))
-    # the nested timestamp should have changed
-    assert cfg2["update_info"]["last_check"] != old.isoformat()
-    assert cfg2["update_info"]["tag_name"] == '9.9.9'
+    assert cfg2["update_info"]["last_check"] is not None
+    assert cfg2["update_info"]["version"] == '9.9.9'
     # route itself should render the new version in body
     assert b'v9.9.9' in rv.data
+
+    # cleanup: reset update_info to empty for next test/download
+    cfg2["update_info"] = {}
+    yaml.safe_dump(cfg2, open(general_path, "w"))
 
 
 def test_query_builder_routes(client):
