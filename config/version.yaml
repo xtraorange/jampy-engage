@@ -1,0 +1,7 @@
+# Application Version and Repository Information
+# This file defines the current version and repository details
+# Update the version here when releasing a new version
+
+version: "0.2.0"
+repository: "xtraorange/jampy-engage"
+repository_url: "https://github.com/xtraorange/jampy-engage"

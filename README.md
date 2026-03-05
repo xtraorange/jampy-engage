@@ -228,4 +228,26 @@ For issues or feature requests, please visit the [GitHub repository](https://git
 - 💾 **Backup/Restore** - Easy configuration backup and recovery
 - 🔄 **CLI Automation** - Use via cron jobs or task scheduler
 - 📈 **Real-time Progress** - Watch reports generate in real-time
+- 🔄 **Auto-Updates** - Built-in update checker with one-click updates
 
+## 🔧 Version Management
+
+The application version is stored in `config/version.yaml`:
+
+```yaml
+version: "0.2.0"
+repository: "xtraorange/jampy-engage"
+repository_url: "https://github.com/xtraorange/jampy-engage"
+```
+
+**To update the version** when releasing a new version:
+1. Update the `version` field in `config/version.yaml`
+2. Commit and push to GitHub with a version tag (e.g., `v0.2.0`)
+3. Users will see the update available in the **Updates** page
+
+**To check for updates** from the web UI:
+1. Navigate to the **Updates** page
+2. Click "Check again" to refresh the release information
+3. If a new version is available, click "Update now" to automatically pull the latest changes
+
+```

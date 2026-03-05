@@ -20,9 +20,20 @@ from .group import Group
 from .email_template import load_email_template, load_override_email_template
 from .sql_builder import generate_safe_hierarchy_sql
 
-# version tracking
-__version__ = "0.2.0"  # bump this whenever a new release is published
-GITHUB_REPO = "xtraorange/jampy-engage"  # change to actual owner/repo
+
+def load_version_config():
+    """Load version and repository info from config/version.yaml."""
+    base = os.getcwd()
+    version_path = os.path.join(base, "config", "version.yaml")
+    if os.path.exists(version_path):
+        with open(version_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+            return config.get("version", "0.2.0"), config.get("repository", "xtraorange/jampy-engage")
+    return "0.2.0", "xtraorange/jampy-engage"
+
+
+# Load version and repository from config
+__version__, GITHUB_REPO = load_version_config()
 CHECK_INTERVAL_SECONDS = 24 * 60 * 60  # check GitHub no more than once per day
 
 
@@ -137,7 +148,7 @@ def create_app():
                                updating=app.config.get("updating"),
                                update_error=app.config.get("update_error"))
 
-    @app.route("/update", methods=["POST"])
+    @app.route("/update", methods=["GET", "POST"])
     def perform_update():
         if app.config.get("updating"):
             return redirect(url_for("index"))
@@ -670,3 +681,11 @@ def create_app():
             return jsonify(error=str(e)), 200
 
     return app
+
+if __name__ == "__main__":
+    """Run the Flask application."""
+    app = create_app()
+    print(f"Starting Jampy Engage v{__version__}...")
+    print("Navigate to http://localhost:5000 in your browser")
+    print("Press Ctrl+C to stop the server")
+    app.run(host="0.0.0.0", port=5000, debug=False)
