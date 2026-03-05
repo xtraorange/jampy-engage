@@ -18,10 +18,11 @@ from .config import load_general_config
 from .db import DatabaseExecutor, ProgressTracker
 from .group import Group
 from .email_template import load_email_template, load_override_email_template
+from .sql_builder import generate_safe_hierarchy_sql
 
 # version tracking
-__version__ = "0.1.0"  # bump this whenever a new release is published
-GITHUB_REPO = "youruser/jampy-engage"  # change to actual owner/repo
+__version__ = "0.2.0"  # bump this whenever a new release is published
+GITHUB_REPO = "xtraorange/jampy-engage"  # change to actual owner/repo
 CHECK_INTERVAL_SECONDS = 24 * 60 * 60  # check GitHub no more than once per day
 
 
@@ -374,6 +375,183 @@ def create_app():
             return redirect(url_for("tags"))
         
         return render_template("tag_new.html", groups=groups, error=None)
+
+    @app.route("/query-builder", methods=["GET"])
+    def query_builder():
+        """UI for building hierarchy queries."""
+        return render_template("query_builder.html")
+
+    @app.route("/api/search-employees", methods=["GET"])
+    def search_employees():
+        """Typeahead search for employees."""
+        cfg = load_general()
+        query = request.args.get("q", "").strip()
+        
+        if not query or len(query) < 2:
+            return jsonify([])
+        
+        try:
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            
+            # Search across ID, name, and username
+            sql = f"""
+            SELECT ID, FIRST_NAME, LAST_NAME, USERNAME FROM Employee 
+            WHERE (ID LIKE '%{query}%' OR FIRST_NAME LIKE '%{query}%' OR LAST_NAME LIKE '%{query}%' OR USERNAME LIKE '%{query}%')
+            AND Terminated IS NULL 
+            ORDER BY FIRST_NAME, LAST_NAME
+            """
+            
+            results = executor.execute_query(sql)
+            items = [
+                {"id": row[0], "first_name": row[1], "last_name": row[2], "username": row[3]}
+                for row in results[:20]  # Limit results on Python side
+            ]
+            executor.close()
+            return jsonify(items)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/search-job-titles", methods=["GET"])
+    def search_job_titles():
+        """Typeahead search for job titles."""
+        cfg = load_general()
+        query = request.args.get("q", "").strip()
+        
+        if not query or len(query) < 1:
+            return jsonify([])
+        
+        try:
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            sql = f"SELECT DISTINCT JOB_TITLE FROM Employee WHERE JOB_TITLE LIKE '%{query}%' AND Terminated IS NULL ORDER BY JOB_TITLE"
+            results = executor.execute_query(sql)
+            items = [{"value": row[0]} for row in results[:20]]
+            executor.close()
+            return jsonify(items)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/search-bu-codes", methods=["GET"])
+    def search_bu_codes():
+        """Typeahead search for business unit codes."""
+        cfg = load_general()
+        query = request.args.get("q", "").strip()
+        
+        if not query or len(query) < 1:
+            return jsonify([])
+        
+        try:
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            sql = f"SELECT DISTINCT BU_CODE FROM Employee WHERE BU_CODE LIKE '%{query}%' AND Terminated IS NULL ORDER BY BU_CODE"
+            results = executor.execute_query(sql)
+            items = [{"value": row[0]} for row in results[:20]]
+            executor.close()
+            return jsonify(items)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/search-companies", methods=["GET"])
+    def search_companies():
+        """Typeahead search for companies/countries."""
+        cfg = load_general()
+        query = request.args.get("q", "").strip()
+        
+        if not query or len(query) < 1:
+            return jsonify([])
+        
+        try:
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            sql = f"SELECT DISTINCT COMPANY FROM Employee WHERE COMPANY LIKE '%{query}%' AND Terminated IS NULL ORDER BY COMPANY"
+            results = executor.execute_query(sql)
+            items = [{"value": row[0]} for row in results[:20]]
+            executor.close()
+            return jsonify(items)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/search-tree-branches", methods=["GET"])
+    def search_tree_branches():
+        """Typeahead search for tree branches."""
+        cfg = load_general()
+        query = request.args.get("q", "").strip()
+        
+        if not query or len(query) < 1:
+            return jsonify([])
+        
+        try:
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            sql = f"SELECT DISTINCT TREE_BRANCH FROM Employee WHERE TREE_BRANCH LIKE '%{query}%' AND Terminated IS NULL ORDER BY TREE_BRANCH"
+            results = executor.execute_query(sql)
+            items = [{"value": row[0]} for row in results[:20]]
+            executor.close()
+            return jsonify(items)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/generate-builder-sql", methods=["POST"])
+    def generate_builder_sql():
+        """Generate SQL from builder parameters."""
+        try:
+            data = request.get_json()
+            
+            mode = data.get("mode")
+            person_id = data.get("person_id")
+            person_first_name = data.get("person_first_name")
+            person_last_name = data.get("person_last_name")
+            person_username = data.get("person_username")
+            attributes_job_title = data.get("attributes_job_title")
+            attributes_bu_code = data.get("attributes_bu_code")
+            attributes_company = data.get("attributes_company")
+            attributes_tree_branch = data.get("attributes_tree_branch")
+            filter_job_titles = data.get("filter_job_titles", [])
+            filter_bu_codes = data.get("filter_bu_codes", [])
+            filter_companies = data.get("filter_companies", [])
+            filter_tree_branches = data.get("filter_tree_branches", [])
+            filter_full_part_time = data.get("filter_full_part_time")
+            exclude_root = data.get("exclude_root", False)
+            
+            sql = generate_safe_hierarchy_sql(
+                mode=mode,
+                person_id=person_id,
+                person_first_name=person_first_name,
+                person_last_name=person_last_name,
+                person_username=person_username,
+                attributes_job_title=attributes_job_title,
+                attributes_bu_code=attributes_bu_code,
+                attributes_company=attributes_company,
+                attributes_tree_branch=attributes_tree_branch,
+                filter_job_titles=filter_job_titles,
+                filter_bu_codes=filter_bu_codes,
+                filter_companies=filter_companies,
+                filter_tree_branches=filter_tree_branches,
+                filter_full_part_time=filter_full_part_time,
+                exclude_root=exclude_root,
+            )
+            
+            return jsonify({"sql": sql})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+    @app.route("/api/test-query", methods=["POST"])
+    def test_query():
+        """Test a query and return record count."""
+        try:
+            cfg = load_general()
+            data = request.get_json()
+            sql = data.get("sql", "").strip()
+            
+            if not sql:
+                return jsonify({"error": "No SQL provided"}), 400
+            
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            # Count records
+            count_sql = f"SELECT COUNT(*) FROM ({sql})"
+            result = executor.execute_query(count_sql)
+            count = result[0][0] if result else 0
+            executor.close()
+            
+            return jsonify({"count": count})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
     @app.route("/backup")
     def backup():

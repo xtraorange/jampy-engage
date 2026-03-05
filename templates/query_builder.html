@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+
+{% block title %}SQL Query Builder{% endblock %}
+
+{% block content %}
+<h1>SQL Query Builder</h1>
+
+<div class="row">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="by-person-tab" data-bs-toggle="tab" data-bs-target="#by-person" type="button" role="tab" aria-controls="by-person" aria-selected="true">
+              By Person
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="by-attributes-tab" data-bs-toggle="tab" data-bs-target="#by-attributes" type="button" role="tab" aria-controls="by-attributes" aria-selected="false">
+              By Attributes
+            </button>
+          </li>
+        </ul>
+      </div>
+      <div class="card-body">
+        <div class="tab-content">
+          <!-- By Person Tab -->
+          <div class="tab-pane fade show active" id="by-person" role="tabpanel" aria-labelledby="by-person-tab">
+            <div class="mb-3">
+              <label for="person-search" class="form-label">Find Employee</label>
+              <input type="text" class="form-control" id="person-search" placeholder="Search by ID, name, or username...">
+              <div id="person-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+              <div id="selected-person" class="alert alert-info mt-2" style="display: none;"></div>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="person-exclude-root">
+              <label class="form-check-label" for="person-exclude-root">
+                Exclude the selected person from results
+              </label>
+            </div>
+          </div>
+
+          <!-- By Attributes Tab -->
+          <div class="tab-pane fade" id="by-attributes" role="tabpanel" aria-labelledby="by-attributes-tab">
+            <p class="text-muted small mb-3">Find people with these attributes, then build their hierarchy</p>
+            <div class="mb-3">
+              <label for="attr-job-title" class="form-label">Job Title</label>
+              <input type="text" class="form-control" id="attr-job-title" placeholder="e.g., MGR123">
+              <div id="attr-job-title-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+            <div class="mb-3">
+              <label for="attr-bu-code" class="form-label">Business Unit</label>
+              <input type="text" class="form-control" id="attr-bu-code" placeholder="e.g., BU001">
+              <div id="attr-bu-code-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+            <div class="mb-3">
+              <label for="attr-company" class="form-label">Company/Country</label>
+              <input type="text" class="form-control" id="attr-company" placeholder="e.g., US">
+              <div id="attr-company-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+            <div class="mb-3">
+              <label for="attr-tree-branch" class="form-label">Tree Branch</label>
+              <input type="text" class="form-control" id="attr-tree-branch" placeholder="Enter or select branch">
+              <div id="attr-tree-branch-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Filters Section -->
+        <h5>Filters (applied to hierarchy results)</h5>
+        <p class="text-muted small">Leave blank to include all</p>
+
+        <div class="mb-3">
+          <label for="filter-job-titles" class="form-label">Job Titles</label>
+          <input type="text" class="form-control" id="filter-job-titles" placeholder="Comma-separated job title codes">
+        </div>
+
+        <div class="mb-3">
+          <label for="filter-bu-codes" class="form-label">Business Units</label>
+          <input type="text" class="form-control" id="filter-bu-codes" placeholder="Comma-separated BU codes">
+        </div>
+
+        <div class="mb-3">
+          <label for="filter-companies" class="form-label">Companies/Countries</label>
+          <input type="text" class="form-control" id="filter-companies" placeholder="Comma-separated country codes">
+        </div>
+
+        <div class="mb-3">
+          <label for="filter-tree-branches" class="form-label">Tree Branches</label>
+          <input type="text" class="form-control" id="filter-tree-branches" placeholder="Comma-separated branch codes">
+        </div>
+
+        <div class="mb-3">
+          <label for="filter-full-part-time" class="form-label">Full/Part Time</label>
+          <select class="form-select" id="filter-full-part-time">
+            <option value="">-- All --</option>
+            <option value="F">Full Time</option>
+            <option value="P">Part Time</option>
+          </select>
+        </div>
+
+        <button type="button" id="btn-generate" class="btn btn-primary">Generate Query</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <!-- SQL Preview -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h5 class="mb-0">Generated SQL</h5>
+      </div>
+      <div class="card-body">
+        <textarea id="sql-preview" class="form-control font-monospace" rows="12" readonly style="font-size: 0.85rem; background: #f5f5f5;"></textarea>
+        <div class="mt-2">
+          <button type="button" id="btn-test-query" class="btn btn-outline-secondary btn-sm" style="display: none;">
+            Test Query (Get Count)
+          </button>
+          <div id="test-result" class="alert alert-info mt-2" style="display: none;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Actions</h5>
+      </div>
+      <div class="card-body">
+        <button type="button" id="btn-accept-sql" class="btn btn-success w-100 mb-2" style="display: none;">
+          Accept This Query
+        </button>
+        <button type="button" id="btn-edit-sql" class="btn btn-warning w-100 mb-2">
+          Edit SQL Manually
+        </button>
+        <button type="button" id="btn-cancel" class="btn btn-outline-secondary w-100">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Typeahead Styles -->
+<style>
+  #person-suggestions .list-group-item {
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  #person-suggestions .list-group-item:hover {
+    background-color: #e7f1ff;
+  }
+</style>
+
+<script>
+  let currentMode = 'by_person';
+  let selectedPerson = null;
+  let currentSQL = '';
+
+  // Tab switching
+  document.getElementById('by-person-tab').addEventListener('click', () => {
+    currentMode = 'by_person';
+    selectedPerson = null;
+    document.getElementById('selected-person').style.display = 'none';
+  });
+
+  document.getElementById('by-attributes-tab').addEventListener('click', () => {
+    currentMode = 'by_attributes';
+  });
+
+  // Typeahead function
+  function setupTypeahead(inputId, endpoint, suggestionsId) {
+    const input = document.getElementById(inputId);
+    const suggestionsDiv = document.getElementById(suggestionsId);
+
+    input.addEventListener('input', async (e) => {
+      const query = e.target.value.trim();
+      if (query.length < 1) {
+        suggestionsDiv.style.display = 'none';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        
+        if (Array.isArray(data) && data.length > 0) {
+          suggestionsDiv.innerHTML = data.map(item => `
+            <a href="#" class="list-group-item list-group-item-action" data-value="${item.value}">
+              ${item.value}
+            </a>
+          `).join('');
+          
+          suggestionsDiv.querySelectorAll('a').forEach(item => {
+            item.addEventListener('click', (e) => {
+              e.preventDefault();
+              input.value = item.dataset.value;
+              suggestionsDiv.style.display = 'none';
+            });
+          });
+          suggestionsDiv.style.display = 'block';
+        } else {
+          suggestionsDiv.innerHTML = '<div class="list-group-item text-muted">No results</div>';
+          suggestionsDiv.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+      }
+    });
+
+    // Close suggestions on blur
+    input.addEventListener('blur', () => {
+      setTimeout(() => suggestionsDiv.style.display = 'none', 200);
+    });
+  }
+
+  // Setup typeahead for all attribute fields
+  setupTypeahead('attr-job-title', '/api/search-job-titles', 'attr-job-title-suggestions');
+  setupTypeahead('attr-bu-code', '/api/search-bu-codes', 'attr-bu-code-suggestions');
+  setupTypeahead('attr-company', '/api/search-companies', 'attr-company-suggestions');
+  setupTypeahead('attr-tree-branch', '/api/search-tree-branches', 'attr-tree-branch-suggestions');
+
+  // Person search typeahead
+  const personSearchInput = document.getElementById('person-search');
+  const personSuggestions = document.getElementById('person-suggestions');
+  const selectedPersonDiv = document.getElementById('selected-person');
+
+  personSearchInput.addEventListener('input', async (e) => {
+    const query = e.target.value.trim();
+    if (query.length < 2) {
+      personSuggestions.style.display = 'none';
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/search-employees?q=${encodeURIComponent(query)}`);
+      const employees = await response.json();
+      
+      if (Array.isArray(employees) && employees.length > 0) {
+        personSuggestions.innerHTML = employees.map(emp => `
+          <a href="#" class="list-group-item list-group-item-action" data-id="${emp.id}" data-first="${emp.first_name}" data-last="${emp.last_name}" data-username="${emp.username}">
+            <strong>${emp.first_name} ${emp.last_name}</strong><br>
+            <small>${emp.id} • ${emp.username}</small>
+          </a>
+        `).join('');
+        
+        personSuggestions.querySelectorAll('a').forEach(item => {
+          item.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectedPerson = {
+              id: item.dataset.id,
+              first_name: item.dataset.first,
+              last_name: item.dataset.last,
+              username: item.dataset.username
+            };
+            selectedPersonDiv.innerHTML = `
+              <strong>Selected:</strong> ${selectedPerson.first_name} ${selectedPerson.last_name} 
+              (${selectedPerson.id}) <br>
+              <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="btn-clear-person">Clear</button>
+            `;
+            selectedPersonDiv.style.display = 'block';
+            personSearchInput.value = '';
+            personSuggestions.style.display = 'none';
+            
+            document.getElementById('btn-clear-person').addEventListener('click', () => {
+              selectedPerson = null;
+              selectedPersonDiv.style.display = 'none';
+              personSearchInput.value = '';
+            });
+          });
+        });
+        personSuggestions.style.display = 'block';
+      } else {
+        personSuggestions.innerHTML = '<div class="list-group-item text-muted">No results</div>';
+        personSuggestions.style.display = 'block';
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+    }
+  });
+
+  // Generate Query
+  document.getElementById('btn-generate').addEventListener('click', async () => {
+    const preview = document.getElementById('sql-preview');
+    const btnTest = document.getElementById('btn-test-query');
+    const btnAccept = document.getElementById('btn-accept-sql');
+
+    let mode, payload;
+
+    if (currentMode === 'by_person') {
+      if (!selectedPerson) {
+        alert('Please select a person');
+        return;
+      }
+      mode = 'by_person';
+      payload = {
+        mode,
+        person_id: selectedPerson.id,
+        exclude_root: document.getElementById('person-exclude-root').checked,
+      };
+    } else {
+      mode = 'by_attributes';
+      const jobTitle = document.getElementById('attr-job-title').value.trim();
+      const buCode = document.getElementById('attr-bu-code').value.trim();
+      const company = document.getElementById('attr-company').value.trim();
+      const branch = document.getElementById('attr-tree-branch').value.trim();
+
+      if (!jobTitle && !buCode && !company && !branch) {
+        alert('Please fill in at least one attribute');
+        return;
+      }
+
+      payload = {
+        mode,
+        attributes_job_title: jobTitle || null,
+        attributes_bu_code: buCode || null,
+        attributes_company: company || null,
+        attributes_tree_branch: branch || null,
+      };
+    }
+
+    // Add filters
+    const parseList = (str) => str ? str.split(',').map(s => s.trim()).filter(s => s) : [];
+    payload.filter_job_titles = parseList(document.getElementById('filter-job-titles').value);
+    payload.filter_bu_codes = parseList(document.getElementById('filter-bu-codes').value);
+    payload.filter_companies = parseList(document.getElementById('filter-companies').value);
+    payload.filter_tree_branches = parseList(document.getElementById('filter-tree-branches').value);
+    payload.filter_full_part_time = document.getElementById('filter-full-part-time').value || null;
+
+    try {
+      const response = await fetch('/api/generate-builder-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (data.error) {
+        alert('Error: ' + data.error);
+        return;
+      }
+
+      currentSQL = data.sql;
+      preview.value = currentSQL;
+      btnTest.style.display = 'inline-block';
+      btnAccept.style.display = 'inline-block';
+    } catch (error) {
+      alert('Error generating SQL: ' + error);
+    }
+  });
+
+  // Test Query
+  document.getElementById('btn-test-query').addEventListener('click', async () => {
+    const testResult = document.getElementById('test-result');
+    try {
+      const response = await fetch('/api/test-query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: currentSQL })
+      });
+
+      const data = await response.json();
+      if (data.error) {
+        testResult.innerHTML = `<strong class="text-danger">Error:</strong> ${data.error}`;
+      } else {
+        testResult.innerHTML = `<strong>Result:</strong> ${data.count} records found`;
+      }
+      testResult.style.display = 'block';
+    } catch (error) {
+      testResult.innerHTML = `<strong class="text-danger">Error:</strong> ${error}`;
+      testResult.style.display = 'block';
+    }
+  });
+
+  // Accept SQL
+  document.getElementById('btn-accept-sql').addEventListener('click', () => {
+    // Store SQL in sessionStorage and go back to previous page
+    sessionStorage.setItem('accepted_query_sql', currentSQL);
+    // Try to get the return path, otherwise go back
+    const returnTo = sessionStorage.getItem('return_to');
+    if (returnTo) {
+      sessionStorage.removeItem('return_to');
+      window.location.href = returnTo;
+    } else {
+      window.history.back();
+    }
+  });
+
+  // Edit SQL
+  document.getElementById('btn-edit-sql').addEventListener('click', () => {
+    // Store current SQL in sessionStorage and redirect to group creation/edit
+    if (currentSQL) {
+      sessionStorage.setItem('accepted_query_sql', currentSQL);
+    }
+    const returnTo = sessionStorage.getItem('return_to');
+    if (returnTo) {
+      sessionStorage.removeItem('return_to');
+      window.location.href = returnTo;
+    } else {
+      window.location.href = '/group/new';
+    }
+  });
+
+  // Cancel
+  document.getElementById('btn-cancel').addEventListener('click', () => {
+    if (confirm('Discard changes?')) {
+      window.history.back();
+    }
+  });
+</script>
+{% endblock %}

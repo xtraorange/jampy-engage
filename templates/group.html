@@ -41,6 +41,9 @@
         <div class="mb-3">
           <label for="query" class="form-label">Query</label>
           <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;">{{ config.query }}</textarea>
+          <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-use-builder">
+            🔨 Use Query Builder
+          </button>
         </div>
       </fieldset>
     </div>
@@ -61,6 +64,27 @@
       }
     } catch (error) {
       alert('Error opening folder picker: ' + error);
+    }
+  });
+
+  document.getElementById('btn-use-builder').addEventListener('click', (e) => {
+    e.preventDefault();
+    // Save current query to sessionStorage
+    const currentQuery = document.getElementById('query').value;
+    if (currentQuery) {
+      sessionStorage.setItem('previous_query', currentQuery);
+    }
+    // Redirect to query builder with return path
+    sessionStorage.setItem('return_to', window.location.pathname);
+    window.location.href = '/query-builder';
+  });
+
+  // Check if returning from query builder
+  window.addEventListener('load', () => {
+    const acceptedQuery = sessionStorage.getItem('accepted_query_sql');
+    if (acceptedQuery) {
+      document.getElementById('query').value = acceptedQuery;
+      sessionStorage.removeItem('accepted_query_sql');
     }
   });
 </script>

@@ -38,6 +38,9 @@
         <div class="mb-3">
           <label for="query" class="form-label">Query</label>
           <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;">SELECT * FROM dual;</textarea>
+          <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-use-builder">
+            🔨 Use Query Builder
+          </button>
         </div>
       </fieldset>
     </div>
@@ -47,4 +50,27 @@
     <a href="{{ url_for('groups') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
 </form>
+
+<script>
+  document.getElementById('btn-use-builder').addEventListener('click', (e) => {
+    e.preventDefault();
+    // Save current query to sessionStorage if user has one
+    const currentQuery = document.getElementById('query').value;
+    if (currentQuery && currentQuery !== 'SELECT * FROM dual;') {
+      sessionStorage.setItem('previous_query', currentQuery);
+    }
+    // Redirect to query builder with return path
+    sessionStorage.setItem('return_to', window.location.pathname);
+    window.location.href = '/query-builder';
+  });
+
+  // Check if returning from query builder
+  window.addEventListener('load', () => {
+    const acceptedQuery = sessionStorage.getItem('accepted_query_sql');
+    if (acceptedQuery) {
+      document.getElementById('query').value = acceptedQuery;
+      sessionStorage.removeItem('accepted_query_sql');
+    }
+  });
+</script>
 {% endblock %}
