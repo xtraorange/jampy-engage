@@ -64,10 +64,11 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host "    Installation Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "To start the application, run:" -ForegroundColor White
-Write-Host "  cd $TargetDir" -ForegroundColor Yellow
-Write-Host "  .\.venv\Scripts\Activate.ps1" -ForegroundColor Yellow
-Write-Host "  python run_reports.py" -ForegroundColor Yellow
+Write-Host "To start the application:" -ForegroundColor White
+Write-Host "  1. Open File Explorer and navigate to: $TargetDir" -ForegroundColor Yellow
+Write-Host "  2. Double-click 'start.bat'" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "Then open your browser to: http://localhost:5000" -ForegroundColor Yellow
+Write-Host "The browser will automatically open to: http://localhost:5000" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "Alternative: Run '.\start.ps1' in PowerShell from the install directory" -ForegroundColor Cyan
 Write-Host ""
