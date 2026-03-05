@@ -266,11 +266,18 @@ def create_app():
 
     @app.route("/restart", methods=["POST"])
     def restart():
-        """Shutdown the Flask development server."""
+        """Shutdown the Flask development server or exit process.
+
+        The werkzeug shutdown function is only available in the development
+        server; if it's missing we fall back to os._exit after a brief delay so
+        the POST can return successfully to the browser.
+        """
         func = request.environ.get('werkzeug.server.shutdown')
-        if func is None:
-            return "Shutdown not available", 500
-        threading.Thread(target=func).start()
+        if func:
+            threading.Thread(target=func).start()
+        else:
+            # schedule hard exit so caller gets 200
+            threading.Timer(0.5, lambda: os._exit(0)).start()
         return "Shutting down", 200
 
     @app.route("/groups")

@@ -104,6 +104,20 @@
       await fetch('{{ url_for("restart") }}', { method: 'POST' });
       document.getElementById('restart-btn').disabled = true;
       document.querySelector('.card-text').textContent = 'Shutting down...';
+      // after server stops, poll until it comes back then reload
+      const checkUrl = '{{ url_for("index") }}';
+      let down = false;
+      const checkInterval = setInterval(async () => {
+        try {
+          const r = await fetch(checkUrl);
+          if (down && r.ok) {
+            clearInterval(checkInterval);
+            window.location = checkUrl;
+          }
+        } catch (e) {
+          down = true; // server is down or unreachable
+        }
+      }, 1000);
     });
   </script>
   {% endif %}
