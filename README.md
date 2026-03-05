@@ -43,6 +43,15 @@ curl -fsSL https://raw.githubusercontent.com/xtraorange/jampy-engage/main/instal
    python run_reports.py
    ```
 
+   **Alternative: Use the provided start scripts**
+   
+   For convenience, you can also use the included start files:
+   
+   - **Windows (double-click or run in PowerShell):** `start.bat`
+   - **Windows (PowerShell script):** `start.ps1`
+   
+   These scripts automatically activate the virtual environment and start the application.
+
 Open your browser to **http://localhost:5000** and you're ready to go!
 
 ## 📖 Using the Web Interface (Recommended)
