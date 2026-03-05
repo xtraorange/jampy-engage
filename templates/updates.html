@@ -36,8 +36,17 @@
 <p class="text-success">You are up to date.</p>
 {% endif %}
 
+{% if not updating %}
+<div class="mt-4">
+  <form method="post" action="{{ url_for('force_update') }}" onsubmit="return confirm('Force update will pull latest changes regardless of version. Continue?');" style="display: inline;">
+    <button type="submit" class="btn btn-warning">Force update</button>
+  </form>
+  <a href="{{ url_for('updates', check='true') }}" class="btn btn-outline-primary">Check again</a>
+</div>
+{% else %}
 <p class="mt-4">
   <a href="{{ url_for('updates', check='true') }}" class="btn btn-outline-primary">Check again</a>
 </p>
+{% endif %}
 
 {% endblock %}

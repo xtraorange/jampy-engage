@@ -52,7 +52,7 @@
   {% if updating %}
   <div class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style="background-color: rgba(0, 0, 0, 0.5); z-index: 9999;">
     <div class="card text-center p-5" style="min-width: 500px; max-height: 80vh; overflow-y: auto;">
-      <div class="mb-3">
+      <div class="mb-3" id="spinner">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Updating...</span>
         </div>
@@ -90,6 +90,8 @@
         // Stop polling if update is done
         if (!data.updating) {
           clearInterval(pollInterval);
+          // Hide spinner when update completes
+          document.getElementById('spinner').style.display = 'none';
         }
         // show restart button when complete status present
         if (!data.updating && data.status && data.status.toLowerCase().includes('restart')) {

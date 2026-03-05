@@ -14,6 +14,7 @@ def test_ui_app_creation():
     assert 'generate' in routes
     assert 'status' in routes
     assert 'perform_update' in routes
+    assert 'force_update' in routes
     assert 'pick_folder' in routes
 
 
@@ -136,6 +137,36 @@ def test_update_stashes_changes(monkeypatch, client):
     assert ['git', 'stash', 'push', '-u', '-m', 'jampy-update'] in calls
     assert ['git', 'pull', '--ff-only'] in calls
     assert ['git', 'stash', 'pop'] in calls
+
+
+def test_force_update_endpoint(monkeypatch, client):
+    """force_update should perform update regardless of version check"""
+    from types import SimpleNamespace
+    calls = []
+    
+    def fake_run(cmd, cwd=None, capture_output=False, text=False, timeout=None, check=False):
+        calls.append(cmd)
+        # simulate normal completed process
+        return SimpleNamespace(stdout="ok", stderr="")
+
+    monkeypatch.setattr('src.ui.subprocess.run', fake_run)
+
+    # trigger force update via POST
+    rv = client.post('/force-update')
+    assert rv.status_code == 302  # Should redirect
+    # wait until updating flag clears
+    import time
+    while True:
+        status = client.get('/api/update-status').get_json()
+        if not status['updating']:
+            break
+        time.sleep(0.1)
+    # ensure stash/pull/pop commands invoked (same as normal update)
+    assert ['git', 'stash', 'push', '-u', '-m', 'jampy-update'] in calls
+    assert ['git', 'pull', '--ff-only'] in calls
+    assert ['git', 'stash', 'pop'] in calls
+    # status should mention force update
+    assert 'force update' in status['status'].lower()
 
 
 def test_query_builder_routes(client):
