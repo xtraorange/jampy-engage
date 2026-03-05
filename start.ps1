@@ -33,24 +33,23 @@ if (Test-Path $venvPath) {
     exit 1
 }
 
+Write-Host "Virtual environment activated successfully." -ForegroundColor Green
+Write-Host ""
 Write-Host "Starting Flask application..." -ForegroundColor Green
 Write-Host ""
-
-# Start Python in a new window
-$pythonPath = (Get-Command python).Source
-Start-Process -FilePath $pythonPath -ArgumentList "-m", "src.ui" -WorkingDirectory $scriptDir
-
-# Wait for server to start
-Write-Host "Waiting for server to start..." -ForegroundColor Cyan
-Start-Sleep -Seconds 2
-
-# Open browser
-Write-Host "Opening browser to http://localhost:5000..." -ForegroundColor Cyan
-Start-Process "http://localhost:5000"
-
+Write-Host "============================================" -ForegroundColor Cyan
+Write-Host "   Jampy Engage is starting..." -ForegroundColor Cyan
+Write-Host "   Opening http://localhost:5000 in your browser" -ForegroundColor Cyan
+Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Application started!" -ForegroundColor Green
-Write-Host "The Flask server is running in a separate window." -ForegroundColor Cyan
-Write-Host "Close this window or the server window to stop the application." -ForegroundColor Cyan
+Write-Host "Press Ctrl+C to stop the server." -ForegroundColor Yellow
 Write-Host ""
-Read-Host "Press Enter to exit this launcher"
+
+# Start the Flask application (this will also open the browser automatically)
+python -m src.ui
+
+# Show that the app has closed
+Write-Host ""
+Write-Host "Application has stopped." -ForegroundColor Yellow
+Write-Host ""
+Read-Host "Press Enter to exit"

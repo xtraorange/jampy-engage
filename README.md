@@ -38,21 +38,16 @@ curl -fsSL https://raw.githubusercontent.com/xtraorange/jampy-engage/main/instal
    ```bash
    pip install -r requirements.txt
    ```
-6. Run the application:
-   ```bash
-   python run_reports.py
-   ```
+6. Start the application:
+   - **Windows:** Double-click `start.bat` or run `.\start.ps1` in PowerShell
+   - **macOS/Linux:** Run `python run_reports.py`
+   
+   The start scripts automatically:
+   - Activate the virtual environment
+   - Start the Flask server
+   - Open your browser to http://localhost:5000
 
-   **Alternative: Use the provided start scripts**
-   
-   For convenience, you can also use the included start files:
-   
-   - **Windows (double-click or run in PowerShell):** `start.bat`
-   - **Windows (PowerShell script):** `start.ps1`
-   
-   These scripts automatically activate the virtual environment and start the application.
-
-Open your browser to **http://localhost:5000** and you're ready to go!
+The application is now ready to use!
 
 ## 📖 Using the Web Interface (Recommended)
 
@@ -64,6 +59,7 @@ The web interface provides an easy-to-use dashboard for managing everything.
 - **Groups** - Create, edit, and delete groups with SQL queries
 - **Tags** - Manage tags and add new ones across multiple groups
 - **Email Templates** - Customize email subject and body
+- **Updates** - Check for and install application updates
 - **Backup/Restore** - Back up your configuration and restore it later
 
 ### Workflow
@@ -85,10 +81,18 @@ Navigate to **Groups** to:
 - **Create new groups** - Click "+ New Group" button
   - Enter a unique handle (e.g., `sales_team`)
   - Set display name and tags
-  - Paste your SQL query
+  - Enter your SQL query, or click **"🔨 Use Query Builder"** to build one interactively
   - Optional: set a group-specific email recipient
 - **Edit groups** - Click "Edit" to modify SQL query, display name, tags, or email recipient
 - **Delete groups** - Click "Delete" (with confirmation)
+
+#### 2a. Using the SQL Query Builder
+The SQL Query Builder helps you construct complex hierarchical queries without writing SQL:
+- **By Person Mode**: Search for an employee and automatically build their hierarchy with supervisors and direct reports
+- **By Attributes Mode**: Select employees by job title, department, company, or branch, then build their hierarchy
+- **Filters**: Apply additional filters to the results (job titles, departments, etc.)
+- **Preview**: Test your query and see the record count before saving
+- Click **"Accept This Query"** to use it in your group
 
 #### 3. Manage Tags
 Navigate to **Tags** to:
@@ -120,20 +124,16 @@ Navigate to **Generate** to:
 - **Backup** - Click "Backup" in the top navigation to download a zip file of all configurations
 - **Restore** - Click "Restore" to upload a previously saved backup
 
-## 🔧 Command-Line Interface (for automation)
+##  Application Updates
+The web UI includes an automatic update checker:
+- **Automatic checking**: Checks GitHub for new releases once per day
+- **Manual checking**: Click "Updates" in the top navigation, then "Check again" to force a fresh check
+- **Updates page**: Shows your current version, latest release, and release notes
+- **One-click updates**: Click "Update now" to automatically pull latest code and reinstall dependencies
 
-## 🔄 Built‑in Update Checker
-The web UI now checks GitHub for new releases once per day. If a newer
-version is available you'll see a banner on the **App Settings** page along
-with release notes. Click **Update now** to pull the latest code and install
-updated dependencies. The application will enter a temporary "updating" mode
-— most pages become disabled until you restart the server.
+The application enters "updating" mode while installing - most pages become disabled. After the update completes, restart the server to load the new code.
 
-Updates are performed by running `git pull` in the installation directory and
-re-installing requirements. Because Python must reload the code, you'll need to
-restart the process when the update completes. The installer scripts (`install.sh`
-and `install.ps1`) can be used again to perform the update from the command
-line.
+**Note:** Your GitHub release must be marked as "Latest release" for the update checker to detect it. If you see an older version than expected, check that the newest release is marked as "Latest" in your GitHub releases page.
 
 ## 🔧 Command-Line Interface (for automation)
 
