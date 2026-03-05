@@ -77,71 +77,53 @@ def create_app():
         except Exception:
             return latest != current
 
-    def check_for_updates(cfg: dict, force: bool = False) -> dict:
-        """Return a dict describing the latest GitHub version.
-
-        The timestamp of the last check is stored inside ``update_info`` under
-        ``last_check``; this keeps all update-related data together.  If an
-        old config still uses ``last_update_check`` at the top level we migrate
-        it on first call.
+    def check_for_updates(cfg: dict) -> dict:
+        """Always fetch latest version from GitHub and return update info.
+        
+        Stores: {version: X.Y.Z, body: release notes, last_check: timestamp}
         """
         now = datetime.now()
-
-        # migrate legacy timestamp if present
         info = cfg.get("update_info") or {}
+
+        # migrate legacy top-level timestamp if present
         if "last_update_check" in cfg:
-            # preserve existing timestamp inside the nested dict
             info.setdefault("last_check", cfg.pop("last_update_check"))
             cfg["update_info"] = info
             save_general(cfg)
 
-        last = info.get("last_check")
-        should_fetch = True
-        if not force and last:
-            try:
-                last_dt = datetime.fromisoformat(last)
-                if (now - last_dt).total_seconds() < CHECK_INTERVAL_SECONDS:
-                    should_fetch = False
-            except Exception:
-                pass
+        # Always fetch fresh from GitHub
+        try:
+            raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/config/version.yaml"
+            with urllib.request.urlopen(raw_url) as resp:
+                data = resp.read()
+            if isinstance(data, bytes):
+                data = data.decode("utf-8")
+            remote_config = yaml.safe_load(data)
 
-        if should_fetch:
-            try:
-                raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/config/version.yaml"
-                with urllib.request.urlopen(raw_url) as resp:
-                    data = resp.read()
-                if isinstance(data, bytes):
-                    data = data.decode("utf-8")
-                remote_config = yaml.safe_load(data)
+            if remote_config and remote_config.get("version"):
+                remote_version = remote_config.get("version")
+                info = {"version": remote_version, "body": ""}
+                
+                # fetch release notes (optional)
+                try:
+                    releases_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tag/v{remote_version}"
+                    with urllib.request.urlopen(releases_url) as resp:
+                        release_data = json.load(resp)
+                        if release_data.get("body"):
+                            info["body"] = release_data.get("body")
+                except Exception:
+                    pass
 
-                if remote_config and remote_config.get("version"):
-                    remote_version = remote_config.get("version")
-                    info = {
-                        "version": remote_version,
-                        "tag_name": remote_version,
-                        "repository": remote_config.get("repository", GITHUB_REPO),
-                        "body": ""
-                    }
-                    # fetch notes (optional)
-                    try:
-                        releases_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tag/v{remote_version}"
-                        with urllib.request.urlopen(releases_url) as resp:
-                            release_data = json.load(resp)
-                            if release_data.get("body"):
-                                info["body"] = release_data.get("body")
-                    except Exception:
-                        pass
-
-                    cfg["update_info"] = info
-                # always record when we last tried
-                info["last_check"] = now.isoformat()
                 cfg["update_info"] = info
-                save_general(cfg)
-            except Exception:
-                # even on failure update the timestamp so the user knows we tried
-                info["last_check"] = now.isoformat()
-                cfg["update_info"] = info
-
+        except Exception as e:
+            # on fetch failure, keep existing info but log the issue
+            pass
+        
+        # Always update timestamp of last check attempt
+        info["last_check"] = now.isoformat()
+        cfg["update_info"] = info
+        save_general(cfg)
+        
         return info
 
     @app.route("/settings", methods=["GET", "POST"])
