@@ -1,6 +1,7 @@
 """API routes for AJAX calls."""
 from flask import Blueprint, request, jsonify
 import os
+from datetime import datetime
 
 from ...services.config_service import ConfigService
 from ...sql_builder import generate_safe_hierarchy_sql
@@ -44,10 +45,17 @@ def init_api_routes(app, base_path: str):
             executor.close()
             return jsonify(items)
         except Exception as e:
-            import traceback
-            print(f"DEBUG: Search error for '{query}': {str(e)}")
-            print(f"DEBUG: Traceback:\n{traceback.format_exc()}")
-            return jsonify({"error": str(e)}), 500
+            import traceback, logging, os
+            err_msg = str(e)
+            # Write detailed error to log file in base path
+            log_path = os.path.join(os.getcwd(), 'error.log')
+            with open(log_path, 'a', encoding='utf-8') as logf:
+                logf.write(f"[{datetime.now()}] Search error for '{query}': {err_msg}\n")
+                logf.write(traceback.format_exc())
+                logf.write("\n---\n")
+            print(f"DEBUG: Search error logged to {log_path}")
+            # return full message if short number or generic
+            return jsonify({"error": err_msg}), 500
 
     @api_bp.route("/api/search-job-titles", methods=["GET"])
     def search_job_titles():
