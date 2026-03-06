@@ -128,13 +128,9 @@
       const data = await response.json();
       if (data.path) {
         document.getElementById('output_dir').value = data.path;
-      } else if (data.cancelled) {
-        alert('Folder picker cancelled or not available on this server. Please type the path manually.');
-      } else if (data.error) {
-        alert('Folder picker error: ' + data.error + '\nThis feature requires a local GUI environment and may not work on remote servers.');
       }
     } catch (error) {
-      alert('Error opening folder picker: ' + error + '\nThis feature only works when the server can display dialogs locally.');
+      console.error('Error opening folder picker:', error);
     }
   });
 </script>
