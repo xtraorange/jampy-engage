@@ -161,26 +161,70 @@ def init_api_routes(app, base_path: str):
     def pick_folder():
         """Open a native folder picker dialog."""
         try:
-            import tkinter as tk
-            from tkinter.filedialog import askdirectory
+            # Try Windows Shell API first (fastest, no window)
+            import ctypes
+            import ctypes.wintypes as wintypes
+            from ctypes import c_char_p, pointer, POINTER, Structure
 
-            # Create a transparent topmost root window
-            root = tk.Tk()
-            root.geometry('1x1+0+0')
-            root.attributes('-alpha', 0.0)
-            root.attributes('-topmost', True)
+            class BROWSEINFO(Structure):
+                _fields_ = [
+                    ("hwndOwner", wintypes.HWND),
+                    ("pidlRoot", wintypes.c_void_p),
+                    ("pszDisplayName", ctypes.c_char_p),
+                    ("lpszTitle", wintypes.LPCSTR),
+                    ("ulFlags", wintypes.UINT),
+                    ("lpfn", wintypes.c_void_p),
+                    ("lParam", wintypes.LPARAM),
+                    ("iImage", wintypes.c_int),
+                ]
 
-            # Open folder picker
-            folder = askdirectory(title="Select a folder")
-            root.destroy()
+            shell32 = ctypes.windll.shell32
+            ole32 = ctypes.windll.ole32
 
-            if folder:
-                return jsonify(path=folder)
-            else:
-                return jsonify(cancelled=True)
-        except ImportError:
-            return jsonify(error="tkinter not installed"), 200
-        except Exception as e:
-            return jsonify(error=str(e)), 200
+            # Initialize COM
+            ole32.CoInitialize(None)
+
+            # Set up browse info
+            bi = BROWSEINFO()
+            bi.hwndOwner = None
+            bi.pidlRoot = None
+            bi.pszDisplayName = ctypes.create_string_buffer(4096)
+            bi.lpszTitle = b"Select a folder"
+            bi.ulFlags = 0x0001  # BIF_RETURNONLYFSDIRS
+
+            # Show picker
+            pidl = shell32.SHBrowseForFolder(pointer(bi))
+            if pidl:
+                path_buffer = ctypes.create_unicode_buffer(4096)
+                shell32.SHGetPathFromIDListW(pidl, path_buffer)
+                folder = path_buffer.value
+                # Free PIDL
+                ole32.CoTaskMemFree(pidl)
+                ole32.CoUninitialize()
+                if folder:
+                    return jsonify(path=folder)
+            ole32.CoUninitialize()
+            return jsonify(cancelled=True)
+
+        except Exception:
+            # Fall back to tkinter
+            try:
+                import tkinter as tk
+                from tkinter.filedialog import askdirectory
+
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                folder = askdirectory(title="Select a folder")
+                root.destroy()
+
+                if folder:
+                    return jsonify(path=folder)
+                else:
+                    return jsonify(cancelled=True)
+            except ImportError:
+                return jsonify(error="tkinter not installed"), 200
+            except Exception as e:
+                return jsonify(error=str(e)), 200
 
     return api_bp
