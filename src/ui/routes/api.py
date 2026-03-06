@@ -34,6 +34,9 @@ def init_api_routes(app, base_path: str):
             """
 
             results = executor.run_query(sql)
+            print(f"DEBUG: Query results: {results}, type: {type(results)}")
+            if results and len(results) > 0:
+                print(f"DEBUG: First result: {results[0]}, type: {type(results[0])}")
             items = [
                 {"id": row[0], "first_name": row[1], "last_name": row[2], "username": row[3]}
                 for row in results[:20]  # Limit results
