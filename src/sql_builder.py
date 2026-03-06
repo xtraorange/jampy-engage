@@ -78,18 +78,13 @@ def generate_hierarchy_sql(
         if parts:
             comment = "-- hierarchy root: " + " / ".join(parts) + "\n"
 
-    # Build the hierarchy CTE with only necessary columns for clarity
-    # Oracle requires column aliases in recursive WITH clauses
-    hierarchy_cte = comment + f"""WITH cte (EMPLOYEE_ID, USERNAME) AS (
-  SELECT EMPLOYEE_ID, USERNAME
-  FROM omsadm.employee_mv e
-  WHERE {root_where}
-  UNION ALL
-  SELECT e.EMPLOYEE_ID, e.USERNAME
-  FROM omsadm.employee_mv e
-  INNER JOIN cte ON cte.EMPLOYEE_ID = e.SUPERVISOR_ID
-  WHERE status_code != 'T'{f" AND e.USERNAME <> '{person_username}'" if mode=='by_person' and person_username else (f" AND e.EMPLOYEE_ID <> '{person_id}'" if mode=='by_person' and person_id else '')}
-)"""
+    # Build the hierarchy using Oracle CONNECT BY syntax
+    # Oracle requires CONNECT BY for reliable hierarchy queries
+    hierarchy_sql = comment + f"""SELECT EMPLOYEE_ID, USERNAME
+FROM omsadm.employee_mv
+START WITH {root_where.replace("status_code != 'T' AND ", "").replace("status_code != 'T'", "1=1")}
+CONNECT BY PRIOR EMPLOYEE_ID = SUPERVISOR_ID
+AND status_code != 'T'{f" AND USERNAME <> '{person_username}'" if mode=='by_person' and person_username else (f" AND EMPLOYEE_ID <> '{person_id}'" if mode=='by_person' and person_id else '')}"""
     
     # Build additional filters
     filter_where_parts = []
@@ -124,9 +119,8 @@ def generate_hierarchy_sql(
     if filter_where_parts:
         where_clause = "\nWHERE " + "\n  AND ".join(filter_where_parts)
     
-    final_query = f"""{hierarchy_cte}
-SELECT cte.*
-FROM cte{where_clause}"""
+    final_query = f"""SELECT cte.*
+FROM ({hierarchy_sql}) cte{where_clause}"""
     
     return final_query
 
