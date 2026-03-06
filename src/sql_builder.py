@@ -87,7 +87,7 @@ def generate_hierarchy_sql(
   UNION ALL
   SELECT e.EMPLOYEE_ID, e.USERNAME
   FROM omsadm.employee_mv e
-  INNER JOIN cte ON cte.EMPLOYEE_ID = e.SUPERVISORID
+  INNER JOIN cte ON cte.EMPLOYEE_ID = e.SUPERVISOR_ID
   WHERE status_code != 'T'{f" AND e.USERNAME <> '{person_username}'" if mode=='by_person' and person_username else (f" AND e.EMPLOYEE_ID <> '{person_id}'" if mode=='by_person' and person_id else '')}
 )"""
     

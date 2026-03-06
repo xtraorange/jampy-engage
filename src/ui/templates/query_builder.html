@@ -235,6 +235,7 @@
       personSuggestions.style.display = 'none';
       return;
     }
+    // wait briefly after typing stops before querying
     personSearchTimer = setTimeout(async () => {
       try {
         const response = await fetch(`/api/search-employees?q=${encodeURIComponent(query)}`);
