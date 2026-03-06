@@ -9,37 +9,37 @@
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
-      <a class="navbar-brand" href="{{ url_for('generate') }}">Viva Engage Reports</a>
+      <a class="navbar-brand" href="{{ url_for('main.generate') }}">Viva Engage Reports</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto">
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'generate' %}active{% endif %}" href="{{ url_for('generate') }}">Generate</a>
+            <a class="nav-link {% if request.endpoint == 'main.generate' %}active{% endif %}" href="{{ url_for('main.generate') }}">Generate</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">App Settings</a>
+            <a class="nav-link {% if request.endpoint == 'main.index' %}active{% endif %}" href="{{ url_for('main.index') }}">App Settings</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'groups' %}active{% endif %}" href="{{ url_for('groups') }}">Groups</a>
+            <a class="nav-link {% if request.endpoint == 'groups.groups' %}active{% endif %}" href="{{ url_for('groups.groups') }}">Groups</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'tags' %}active{% endif %}" href="{{ url_for('tags') }}">Tags</a>
+            <a class="nav-link {% if request.endpoint == 'tags.tags' %}active{% endif %}" href="{{ url_for('tags.tags') }}">Tags</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'email_templates' %}active{% endif %}" href="{{ url_for('email_templates') }}">Email Templates</a>
+            <a class="nav-link {% if request.endpoint == 'updates.email_templates' %}active{% endif %}" href="{{ url_for('updates.email_templates') }}">Email Templates</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'updates' %}active{% endif %}" href="{{ url_for('updates') }}">Updates</a>
+            <a class="nav-link {% if request.endpoint == 'updates.updates' %}active{% endif %}" href="{{ url_for('updates.updates') }}">Updates</a>
           </li>
         </ul>
         <ul class="navbar-nav">
           <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('backup') }}">Backup</a>
+            <a class="nav-link" href="{{ url_for('updates.backup') }}">Backup</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('restore') }}">Restore</a>
+            <a class="nav-link" href="{{ url_for('updates.restore') }}">Restore</a>
           </li>
         </ul>
       </div>
