@@ -36,12 +36,22 @@ def init_api_routes(app, base_path: str):
 
             results = executor.run_query(sql)
             print(f"DEBUG: Query results: {results}, type: {type(results)}")
-            if results and len(results) > 0:
-                print(f"DEBUG: First result: {results[0]}, type: {type(results[0])}")
-            items = [
-                {"id": row[0], "first_name": row[1], "last_name": row[2], "username": row[3]}
-                for row in results[:20]  # Limit results
-            ]
+            items = []
+            for row in results[:20]:  # Limit results
+                if isinstance(row, dict):
+                    items.append({
+                        "id": row.get("EMPLOYEE_ID") or row.get("employee_id"),
+                        "first_name": row.get("FIRST_NAME") or row.get("first_name"),
+                        "last_name": row.get("LAST_NAME") or row.get("last_name"),
+                        "username": row.get("USERNAME") or row.get("username"),
+                    })
+                else:
+                    items.append({
+                        "id": row[0],
+                        "first_name": row[1],
+                        "last_name": row[2],
+                        "username": row[3],
+                    })
             executor.close()
             return jsonify(items)
         except Exception as e:
@@ -71,7 +81,13 @@ def init_api_routes(app, base_path: str):
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             sql = f"SELECT DISTINCT JOB_TITLE FROM omsadm.employee_mv WHERE JOB_TITLE LIKE '%{query}%' AND status_code != 'T' ORDER BY JOB_TITLE"
             results = executor.run_query(sql)
-            items = [{"value": row[0]} for row in results[:20]]
+            items = []
+            for row in results[:20]:
+                if isinstance(row, dict):
+                    value = next(iter(row.values()), None)
+                else:
+                    value = row[0]
+                items.append({"value": value})
             executor.close()
             return jsonify(items)
         except Exception as e:
@@ -91,7 +107,13 @@ def init_api_routes(app, base_path: str):
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             sql = f"SELECT DISTINCT BU_CODE FROM omsadm.employee_mv WHERE BU_CODE LIKE '%{query}%' AND status_code != 'T' ORDER BY BU_CODE"
             results = executor.run_query(sql)
-            items = [{"value": row[0]} for row in results[:20]]
+            items = []
+            for row in results[:20]:
+                if isinstance(row, dict):
+                    value = next(iter(row.values()), None)
+                else:
+                    value = row[0]
+                items.append({"value": value})
             executor.close()
             return jsonify(items)
         except Exception as e:
@@ -111,7 +133,13 @@ def init_api_routes(app, base_path: str):
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             sql = f"SELECT DISTINCT COMPANY FROM omsadm.employee_mv WHERE COMPANY LIKE '%{query}%' AND status_code != 'T' ORDER BY COMPANY"
             results = executor.run_query(sql)
-            items = [{"value": row[0]} for row in results[:20]]
+            items = []
+            for row in results[:20]:
+                if isinstance(row, dict):
+                    value = next(iter(row.values()), None)
+                else:
+                    value = row[0]
+                items.append({"value": value})
             executor.close()
             return jsonify(items)
         except Exception as e:
@@ -131,7 +159,13 @@ def init_api_routes(app, base_path: str):
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             sql = f"SELECT DISTINCT TREE_BRANCH FROM omsadm.employee_mv WHERE TREE_BRANCH LIKE '%{query}%' AND status_code != 'T' ORDER BY TREE_BRANCH"
             results = executor.run_query(sql)
-            items = [{"value": row[0]} for row in results[:20]]
+            items = []
+            for row in results[:20]:
+                if isinstance(row, dict):
+                    value = next(iter(row.values()), None)
+                else:
+                    value = row[0]
+                items.append({"value": value})
             executor.close()
             return jsonify(items)
         except Exception as e:
