@@ -180,14 +180,33 @@ jampy-engage/
 │   └── accounting_team/
 │       ├── group.yaml
 │       └── query.sql
-├── templates/                    # Web UI templates (don't modify)
 ├── src/                          # Application code (don't modify)
-│   ├── generate_reports.py
-│   ├── ui.py
+│   ├── run_reports.py           # Main entry point module
+│   ├── generate_reports.py      # CLI and processing logic
+│   ├── services/                # Business logic services
+│   │   ├── config_service.py    # Configuration management
+│   │   ├── group_service.py     # Group CRUD operations
+│   │   ├── report_service.py    # Report generation logic
+│   │   └── email_service.py     # Email sending functionality
+│   ├── ui/                      # Web interface package
+│   │   ├── __init__.py          # Flask app setup
+│   │   ├── utils.py             # UI utilities
+│   │   ├── routes/              # Flask route modules
+│   │   │   ├── main.py          # Main web routes
+│   │   │   ├── groups.py        # Group management routes
+│   │   │   ├── tags.py          # Tag management routes
+│   │   │   ├── api.py           # AJAX API endpoints
+│   │   │   └── updates.py       # Update/backup routes
+│   │   └── templates/           # Web UI templates
+│   ├── utils/                   # Utility functions
+│   │   ├── file_utils.py        # File operations
+│   │   └── validation.py        # Input validation
+│   ├── tests/                   # Test files
 │   ├── email_util.py
 │   ├── db.py
 │   └── ...
-├── run_reports.py               # Main entry point
+├── run_reports.py               # Main entry point (wrapper)
+├── docs/                        # Documentation and misc files
 └── requirements.txt             # Python dependencies
 ```
 

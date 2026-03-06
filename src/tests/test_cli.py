@@ -100,7 +100,7 @@ def test_root_entrypoint(monkeypatch, tmp_path):
     cfg_dir.mkdir()
     (cfg_dir / "general.yaml").write_text("oracle_tns: dummy\n")
     # determine actual script path via import rather than assuming cwd
-    import run_reports as rr
+    from .. import run_reports as rr
     script = rr.__file__
 
     cwd = os.getcwd()

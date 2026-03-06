@@ -2,12 +2,8 @@
 """Convenience entry point for the Viva Engage report generator."""
 
 import sys
-import os
 
-# Add src to path so we can import from it
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-
-from src import generate_reports
+from . import generate_reports
 
 
 if __name__ == "__main__":
