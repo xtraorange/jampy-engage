@@ -44,6 +44,9 @@ def init_api_routes(app, base_path: str):
             executor.close()
             return jsonify(items)
         except Exception as e:
+            import traceback
+            print(f"DEBUG: Search error for '{query}': {str(e)}")
+            print(f"DEBUG: Traceback:\n{traceback.format_exc()}")
             return jsonify({"error": str(e)}), 500
 
     @api_bp.route("/api/search-job-titles", methods=["GET"])
