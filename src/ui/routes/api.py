@@ -25,15 +25,16 @@ def init_api_routes(app, base_path: str):
             from ...db import DatabaseExecutor
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
 
-            # Search across ID, name, and username
+            # Search across ID, name, and username (case-insensitive)
             sql = f"""
             SELECT ID, FIRST_NAME, LAST_NAME, USERNAME FROM omsadm.employee_mv
-            WHERE (ID LIKE '%{query}%' OR FIRST_NAME LIKE '%{query}%' OR LAST_NAME LIKE '%{query}%' OR USERNAME LIKE '%{query}%')
+            WHERE (UPPER(ID) LIKE UPPER('%{query}%') OR UPPER(FIRST_NAME) LIKE UPPER('%{query}%') OR UPPER(LAST_NAME) LIKE UPPER('%{query}%') OR UPPER(USERNAME) LIKE UPPER('%{query}%'))
             AND Terminated IS NULL
             ORDER BY FIRST_NAME, LAST_NAME
             """
 
             results = executor.run_query(sql)
+            print(f"DEBUG: Search query '{query}' returned {len(results)} results")  # Debug log
             items = [
                 {"id": row[0], "first_name": row[1], "last_name": row[2], "username": row[3]}
                 for row in results[:20]  # Limit results
@@ -41,6 +42,7 @@ def init_api_routes(app, base_path: str):
             executor.close()
             return jsonify(items)
         except Exception as e:
+            print(f"DEBUG: Search error for '{query}': {str(e)}")  # Debug log
             return jsonify({"error": str(e)}), 500
 
     @api_bp.route("/api/search-job-titles", methods=["GET"])
