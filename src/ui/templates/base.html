@@ -9,17 +9,17 @@
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
-      <a class="navbar-brand" href="{{ url_for('main.generate') }}">Viva Engage Reports</a>
+      <a class="navbar-brand" href="{{ url_for('main.index') }}">Viva Engage Reports</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto">
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'main.generate' %}active{% endif %}" href="{{ url_for('main.generate') }}">Generate</a>
+            <a class="nav-link {% if request.endpoint == 'main.index' %}active{% endif %}" href="{{ url_for('main.index') }}">Generate</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'main.index' %}active{% endif %}" href="{{ url_for('main.index') }}">App Settings</a>
+            <a class="nav-link {% if request.endpoint == 'main.settings' %}active{% endif %}" href="{{ url_for('main.settings') }}">App Settings</a>
           </li>
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'groups.groups' %}active{% endif %}" href="{{ url_for('groups.groups') }}">Groups</a>

@@ -118,7 +118,7 @@ def init_main_routes(app, base_path: str):
                             cfg[key] = val
 
             config_service.save_general_config(cfg)
-            return redirect(url_for("main.index"))
+            return redirect(url_for("main.settings"))
 
         groups = group_service.discover_groups()
         return render_template("index.html", config=cfg, groups=groups,
