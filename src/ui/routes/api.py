@@ -107,7 +107,6 @@ def init_api_routes(app, base_path: str):
             executor.close()
             return jsonify(items)
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
 
     @api_bp.route("/api/search-bu-codes", methods=["GET"])
     def search_bu_codes():
@@ -133,9 +132,75 @@ def init_api_routes(app, base_path: str):
             executor.close()
             return jsonify(items)
         except Exception as e:
+    @api_bp.route("/api/get-all-values", methods=["GET"])
+    def get_all_values():
+        """Generic endpoint to get all unique values for a field."""
+        cfg = config_service.load_general_config()
+        field = request.args.get("field", "").strip()
+        
+        # Map field names to column names
+        field_map = {
+            "job_title": "JOB_TITLE",
+            "bu_code": "BU_CODE", 
+            "company": "COMPANY",
+            "tree_branch": "TREE_BRANCH"
+        }
+        
+        if field not in field_map:
+            return jsonify({"error": "Invalid field"}), 400
+            
+        column = field_map[field]
+        
+        try:
+            from ...db import DatabaseExecutor
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE {column} IS NOT NULL AND status_code != 'T' ORDER BY {column}"
+            results = executor.run_query(sql)
+            items = [row[0] if isinstance(row, (list, tuple)) else next(iter(row.values())) for row in results]
+            executor.close()
+            return jsonify(items)
+        except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    @api_bp.route("/api/search-companies", methods=["GET"])
+    @api_bp.route("/api/search-values", methods=["GET"])
+    def search_values():
+        """Generic endpoint for live search of field values."""
+        cfg = config_service.load_general_config()
+        field = request.args.get("field", "").strip()
+        query = request.args.get("q", "").strip()
+        
+        if not query or len(query) < 1:
+            return jsonify([])
+            
+        # Map field names to column names
+        field_map = {
+            "job_title": "JOB_TITLE",
+            "bu_code": "BU_CODE",
+            "company": "COMPANY", 
+            "tree_branch": "TREE_BRANCH"
+        }
+        
+        if field not in field_map:
+            return jsonify({"error": "Invalid field"}), 400
+            
+        column = field_map[field]
+        
+        try:
+            from ...db import DatabaseExecutor
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE {column} LIKE '%{query}%' AND status_code != 'T' ORDER BY {column}"
+            results = executor.run_query(sql)
+            items = []
+            for row in results[:20]:
+                if isinstance(row, dict):
+                    value = next(iter(row.values()), None)
+                else:
+                    value = row[0]
+                items.append({"value": value})
+            executor.close()
+            return jsonify(items)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
     def search_companies():
         """Typeahead search for companies/countries."""
         cfg = config_service.load_general_config()

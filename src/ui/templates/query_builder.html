@@ -159,6 +159,40 @@
   let selectedPerson = null;
   let currentSQL = '';
 
+  // Cache for attribute values (lazy loaded)
+  const caches = {
+    'attr-job-title': null,
+    'attr-bu-code': null,
+    'attr-company': null,
+    'attr-tree-branch': null
+  };
+
+  // Configuration for each field (educated guesses based on expected unique counts)
+  const fieldConfigs = {
+    'attr-job-title': { cache: false, field: 'job_title' },    // Many uniques (1000+), use live search
+    'attr-bu-code': { cache: true, field: 'bu_code' },         // Few uniques (50-200), use cache
+    'attr-company': { cache: true, field: 'company' },         // Few uniques (10-50), use cache
+    'attr-tree-branch': { cache: false, field: 'tree_branch' } // Many uniques (500+), use live search
+  };
+
+  // Lazy load cache for a field
+  async function loadCache(fieldId) {
+    if (caches[fieldId]) return caches[fieldId]; // Already loaded
+    
+    const config = fieldConfigs[fieldId];
+    if (!config.cache) return null;
+    
+    try {
+      const response = await fetch(`/api/get-all-values?field=${config.field}`);
+      const data = await response.json();
+      caches[fieldId] = data;
+      return data;
+    } catch (error) {
+      console.error(`Error loading cache for ${fieldId}:`, error);
+      return [];
+    }
+  }
+
   // Tab switching
   document.getElementById('by-person-tab').addEventListener('click', () => {
     currentMode = 'by_person';
@@ -172,10 +206,11 @@
     updateSQL();
   });
 
-  // Typeahead function
-  function setupTypeahead(inputId, endpoint, suggestionsId) {
+  // Typeahead function (configurable cache vs live)
+  function setupTypeahead(inputId, suggestionsId) {
     const input = document.getElementById(inputId);
     const suggestionsDiv = document.getElementById(suggestionsId);
+    const config = fieldConfigs[inputId];
 
     input.addEventListener('input', async (e) => {
       const query = e.target.value.trim();
@@ -184,14 +219,15 @@
         return;
       }
 
-      try {
-        const response = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`);
-        const data = await response.json();
+      if (config.cache) {
+        // Client-side filtering
+        const cache = await loadCache(inputId);
+        const matches = cache.filter(item => item && item.toLowerCase().includes(query.toLowerCase())).slice(0, 20);
         
-        if (Array.isArray(data) && data.length > 0) {
-          suggestionsDiv.innerHTML = data.map(item => `
-            <a href="#" class="list-group-item list-group-item-action" data-value="${item.value}">
-              ${item.value}
+        if (matches.length > 0) {
+          suggestionsDiv.innerHTML = matches.map(item => `
+            <a href="#" class="list-group-item list-group-item-action" data-value="${item}">
+              ${item}
             </a>
           `).join('');
           
@@ -201,7 +237,7 @@
               input.value = item.dataset.value;
               suggestionsDiv.style.display = 'none';
               if (currentMode === 'by_attributes') {
-                updateSQL();  // Update immediately when selecting from typeahead
+                updateSQL();
               }
             });
           });
@@ -210,8 +246,37 @@
           suggestionsDiv.innerHTML = '<div class="list-group-item text-muted">No results</div>';
           suggestionsDiv.style.display = 'block';
         }
-      } catch (error) {
-        console.error('Search error:', error);
+      } else {
+        // Live search
+        try {
+          const response = await fetch(`/api/search-values?field=${config.field}&q=${encodeURIComponent(query)}`);
+          const data = await response.json();
+          
+          if (Array.isArray(data) && data.length > 0) {
+            suggestionsDiv.innerHTML = data.map(item => `
+              <a href="#" class="list-group-item list-group-item-action" data-value="${item.value}">
+                ${item.value}
+              </a>
+            `).join('');
+            
+            suggestionsDiv.querySelectorAll('a').forEach(item => {
+              item.addEventListener('click', (e) => {
+                e.preventDefault();
+                input.value = item.dataset.value;
+                suggestionsDiv.style.display = 'none';
+                if (currentMode === 'by_attributes') {
+                  updateSQL();
+                }
+              });
+            });
+            suggestionsDiv.style.display = 'block';
+          } else {
+            suggestionsDiv.innerHTML = '<div class="list-group-item text-muted">No results</div>';
+            suggestionsDiv.style.display = 'block';
+          }
+        } catch (error) {
+          console.error('Search error:', error);
+        }
       }
     });
 
@@ -222,10 +287,10 @@
   }
 
   // Setup typeahead for all attribute fields
-  setupTypeahead('attr-job-title', '/api/search-job-titles', 'attr-job-title-suggestions');
-  setupTypeahead('attr-bu-code', '/api/search-bu-codes', 'attr-bu-code-suggestions');
-  setupTypeahead('attr-company', '/api/search-companies', 'attr-company-suggestions');
-  setupTypeahead('attr-tree-branch', '/api/search-tree-branches', 'attr-tree-branch-suggestions');
+  setupTypeahead('attr-job-title', 'attr-job-title-suggestions');
+  setupTypeahead('attr-bu-code', 'attr-bu-code-suggestions');
+  setupTypeahead('attr-company', 'attr-company-suggestions');
+  setupTypeahead('attr-tree-branch', 'attr-tree-branch-suggestions');
 
   // Debounced update for attributes
   let attrUpdateTimer = null;
