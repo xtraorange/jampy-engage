@@ -205,7 +205,7 @@ def init_api_routes(app, base_path: str):
             # Count records
             count_sql = f"SELECT COUNT(*) FROM ({sql})"
             result = executor.run_query(count_sql)
-            count = result[0][0] if result else 0
+            count = result[0]["COUNT(*)"] if result else 0
             executor.close()
 
             return jsonify({"count": count})
