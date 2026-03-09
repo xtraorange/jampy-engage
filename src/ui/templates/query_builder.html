@@ -213,8 +213,8 @@
   function updateInputValue(fieldId) {
     const input = document.getElementById(fieldId);
     input.value = fieldTags[fieldId].join(', ');
-    // Trigger input event to update SQL
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    // Update SQL when tags change
+    updateSQL();
   }
 
   // Person tag management
@@ -373,7 +373,7 @@
       clearTimeout(filterSearchTimer);
       filterSearchTimer = setTimeout(async () => {
         try {
-          console.log('Fetching /api/search-values?field=' + field + '&q=' + currentWord);
+          console.log('Fetching /api/search-values?field=' + field + '&q=' + query);
           const response = await fetch(`/api/search-values?field=${field}&q=${encodeURIComponent(query)}`);
           const data = await response.json();
           console.log('Filter search response:', data);
@@ -416,21 +416,6 @@
     input.addEventListener('blur', () => {
       setTimeout(() => suggestionsDiv.style.display = 'none', 200);
     });
-  });
-  let attrUpdateTimer = null;
-  const attrInputs = ['attr-job-title', 'attr-bu-code', 'attr-company', 'attr-tree-branch'];
-  attrInputs.forEach(id => {
-    document.getElementById(id).addEventListener('input', () => {
-      clearTimeout(attrUpdateTimer);
-      attrUpdateTimer = setTimeout(updateSQL, 300);  // 300ms debounce
-    });
-  });
-
-  // Update on filter changes
-  const filterInputs = ['filter-job-titles', 'filter-bu-codes', 'filter-companies', 'filter-tree-branches', 'filter-full-part-time'];
-  filterInputs.forEach(id => {
-    document.getElementById(id).addEventListener('input', updateSQL);
-    document.getElementById(id).addEventListener('change', updateSQL);
   });
 
   // Update on exclude root change
