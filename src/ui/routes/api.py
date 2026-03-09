@@ -135,12 +135,14 @@ def init_api_routes(app, base_path: str):
         if field not in field_map:
             return jsonify({"error": "Invalid field"}), 400
             
-        column = field_map[field]
-        
         try:
-            executor = DatabaseExecutor(cfg.get("oracle_tns"))
-            # case-insensitive search to match uppercase Oracle data
-            sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE UPPER({column}) LIKE UPPER('%{query}%') AND status_code != 'T' ORDER BY {column}"
+            if field == "job_title":
+                # Special case: search both JOB_CODE and JOB_TITLE
+                sql = f"SELECT DISTINCT JOB_CODE || ' - ' || JOB_TITLE as value FROM omsadm.employee_mv WHERE (UPPER(JOB_CODE) LIKE UPPER('%{query}%') OR UPPER(JOB_TITLE) LIKE UPPER('%{query}%')) AND status_code != 'T' ORDER BY value"
+            else:
+                column = field_map[field]
+                sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE UPPER({column}) LIKE UPPER('%{query}%') AND status_code != 'T' ORDER BY {column}"
+            
             results = executor.run_query(sql)
             items = []
             for row in results[:20]:

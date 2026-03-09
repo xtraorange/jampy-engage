@@ -12,19 +12,19 @@
         <ul class="nav nav-tabs card-header-tabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="nav-link active" id="by-person-tab" data-bs-toggle="tab" data-bs-target="#by-person" type="button" role="tab" aria-controls="by-person" aria-selected="true">
-              By Person
+              Hierarchy - By Person
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="by-attributes-tab" data-bs-toggle="tab" data-bs-target="#by-attributes" type="button" role="tab" aria-controls="by-attributes" aria-selected="false">
-              By Attributes
+              Hierarchy - By Role
             </button>
           </li>
         </ul>
       </div>
       <div class="card-body">
         <div class="tab-content">
-          <!-- By Person Tab -->
+          <!-- Hierarchy - By Person Tab -->
           <div class="tab-pane fade show active" id="by-person" role="tabpanel" aria-labelledby="by-person-tab">
             <div class="mb-3">
               <label for="person-search" class="form-label">Find Employee</label>
@@ -40,27 +40,31 @@
             </div>
           </div>
 
-          <!-- By Attributes Tab -->
+          <!-- Hierarchy - By Role Tab -->
           <div class="tab-pane fade" id="by-attributes" role="tabpanel" aria-labelledby="by-attributes-tab">
             <p class="text-muted small mb-3">Find people with these attributes, then build their hierarchy</p>
             <div class="mb-3">
-              <label for="attr-job-title" class="form-label">Job Title</label>
-              <input type="text" class="form-control" id="attr-job-title" placeholder="e.g., MGR123">
+              <label for="attr-job-title" class="form-label">Job Title(s)/Job Code(s)</label>
+              <div id="attr-job-title-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+              <input type="text" class="form-control" id="attr-job-title" placeholder="Type to search...">
               <div id="attr-job-title-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
             </div>
             <div class="mb-3">
-              <label for="attr-bu-code" class="form-label">Business Unit</label>
-              <input type="text" class="form-control" id="attr-bu-code" placeholder="e.g., BU001">
+              <label for="attr-bu-code" class="form-label">Business Unit(s)</label>
+              <div id="attr-bu-code-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+              <input type="text" class="form-control" id="attr-bu-code" placeholder="Type to search...">
               <div id="attr-bu-code-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
             </div>
             <div class="mb-3">
-              <label for="attr-company" class="form-label">Company/Country</label>
-              <input type="text" class="form-control" id="attr-company" placeholder="e.g., US">
+              <label for="attr-company" class="form-label">Companies (Countries)</label>
+              <div id="attr-company-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+              <input type="text" class="form-control" id="attr-company" placeholder="Type to search...">
               <div id="attr-company-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
             </div>
             <div class="mb-3">
-              <label for="attr-tree-branch" class="form-label">Tree Branch</label>
-              <input type="text" class="form-control" id="attr-tree-branch" placeholder="Enter or select branch">
+              <label for="attr-tree-branch" class="form-label">Tree Branch(es)</label>
+              <div id="attr-tree-branch-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+              <input type="text" class="form-control" id="attr-tree-branch" placeholder="Type to search...">
               <div id="attr-tree-branch-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
             </div>
           </div>
@@ -73,26 +77,30 @@
         <p class="text-muted small">Leave blank to include all</p>
 
         <div class="mb-3">
-          <label for="filter-job-titles" class="form-label">Job Titles</label>
-          <input type="text" class="form-control" id="filter-job-titles" placeholder="Comma-separated job title codes">
+          <label for="filter-job-titles" class="form-label">Job Title(s)/Job Code(s)</label>
+          <div id="filter-job-titles-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+          <input type="text" class="form-control" id="filter-job-titles" placeholder="Type to search...">
           <div class="list-group" id="filter-job-titles-suggestions" style="display: none; position: absolute; z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
         </div>
 
         <div class="mb-3">
-          <label for="filter-bu-codes" class="form-label">Business Units</label>
-          <input type="text" class="form-control" id="filter-bu-codes" placeholder="Comma-separated BU codes">
+          <label for="filter-bu-codes" class="form-label">Business Unit(s)</label>
+          <div id="filter-bu-codes-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+          <input type="text" class="form-control" id="filter-bu-codes" placeholder="Type to search...">
           <div class="list-group" id="filter-bu-codes-suggestions" style="display: none; position: absolute; z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
         </div>
 
         <div class="mb-3">
-          <label for="filter-companies" class="form-label">Companies/Countries</label>
-          <input type="text" class="form-control" id="filter-companies" placeholder="Comma-separated country codes">
+          <label for="filter-companies" class="form-label">Companies (Countries)</label>
+          <div id="filter-companies-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+          <input type="text" class="form-control" id="filter-companies" placeholder="Type to search...">
           <div class="list-group" id="filter-companies-suggestions" style="display: none; position: absolute; z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
         </div>
 
         <div class="mb-3">
-          <label for="filter-tree-branches" class="form-label">Tree Branches</label>
-          <input type="text" class="form-control" id="filter-tree-branches" placeholder="Comma-separated branch codes">
+          <label for="filter-tree-branches" class="form-label">Tree Branch(es)</label>
+          <div id="filter-tree-branches-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+          <input type="text" class="form-control" id="filter-tree-branches" placeholder="Type to search...">
           <div class="list-group" id="filter-tree-branches-suggestions" style="display: none; position: absolute; z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
         </div>
 
@@ -160,6 +168,54 @@
 
 <script>
   let currentMode = 'by_person';
+
+  // Tags for selected values
+  const fieldTags = {
+    'attr-job-title': [],
+    'attr-bu-code': [],
+    'attr-company': [],
+    'attr-tree-branch': [],
+    'filter-job-titles': [],
+    'filter-bu-codes': [],
+    'filter-companies': [],
+    'filter-tree-branches': []
+  };
+
+  // Tag management functions
+  function addTag(fieldId, value) {
+    if (fieldId.startsWith('attr-')) {
+      fieldTags[fieldId] = [value];
+    } else {
+      if (!fieldTags[fieldId].includes(value)) {
+        fieldTags[fieldId].push(value);
+      }
+    }
+    updateTagsDisplay(fieldId);
+    updateInputValue(fieldId);
+  }
+
+  function removeTag(fieldId, value) {
+    fieldTags[fieldId] = fieldTags[fieldId].filter(v => v !== value);
+    updateTagsDisplay(fieldId);
+    updateInputValue(fieldId);
+  }
+
+  function updateTagsDisplay(fieldId) {
+    const tagsDiv = document.getElementById(fieldId + '-tags');
+    tagsDiv.innerHTML = fieldTags[fieldId].map(value => `
+      <span class="badge bg-primary d-inline-flex align-items-center gap-1">
+        ${value}
+        <button type="button" class="btn-close btn-close-white" aria-label="Remove" onclick="removeTag('${fieldId}', '${value.replace(/'/g, "\\'")}')"></button>
+      </span>
+    `).join('');
+  }
+
+  function updateInputValue(fieldId) {
+    const input = document.getElementById(fieldId);
+    input.value = fieldTags[fieldId].join(', ');
+    // Trigger input event to update SQL
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   let selectedPerson = null;
   let currentSQL = '';
 
@@ -234,9 +290,9 @@
             suggestionsDiv.querySelectorAll('a').forEach(a => {
               a.addEventListener('click', (e) => {
                 e.preventDefault();
-                input.value = a.dataset.value;
+                addTag(fieldId, a.dataset.value);
+                input.value = ''; // clear search input
                 suggestionsDiv.style.display = 'none';
-                updateSQL();
               });
             });
             suggestionsDiv.style.display = 'block';
@@ -281,10 +337,8 @@
 
     input.addEventListener('input', (e) => {
       console.log('Filter input on', fieldId, 'value:', e.target.value);
-      const value = e.target.value;
-      const lastComma = value.lastIndexOf(',');
-      const currentWord = value.substring(lastComma + 1).trim();
-      if (currentWord.length < 2) {
+      const query = e.target.value.trim();
+      if (query.length < 2) {
         suggestionsDiv.style.display = 'none';
         return;
       }
@@ -293,7 +347,7 @@
       filterSearchTimer = setTimeout(async () => {
         try {
           console.log('Fetching /api/search-values?field=' + field + '&q=' + currentWord);
-          const response = await fetch(`/api/search-values?field=${field}&q=${encodeURIComponent(currentWord)}`);
+          const response = await fetch(`/api/search-values?field=${field}&q=${encodeURIComponent(query)}`);
           const data = await response.json();
           console.log('Filter search response:', data);
 
@@ -311,11 +365,9 @@
             suggestionsDiv.querySelectorAll('a').forEach(a => {
               a.addEventListener('click', (e) => {
                 e.preventDefault();
-                // Append to the current value
-                const prefix = value.substring(0, lastComma + 1) + (lastComma >= 0 ? ' ' : '');
-                input.value = prefix + a.dataset.value + ', ';
+                addTag(fieldId, a.dataset.value);
+                input.value = ''; // clear search input
                 suggestionsDiv.style.display = 'none';
-                // updateSQL is called on input event
               });
             });
             suggestionsDiv.style.display = 'block';
