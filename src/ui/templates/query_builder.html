@@ -183,8 +183,10 @@
     if (!config.cache) return null;
     
     try {
+      console.log('Loading cache for', fieldId, 'field:', config.field);
       const response = await fetch(`/api/get-all-values?field=${config.field}`);
       const data = await response.json();
+      console.log('Cache data for', fieldId, ':', data);
       caches[fieldId] = data;
       return data;
     } catch (error) {
@@ -213,6 +215,7 @@
     const config = fieldConfigs[inputId];
 
     input.addEventListener('input', async (e) => {
+      console.log('Typeahead input event on', inputId, 'query:', e.target.value.trim());
       const query = e.target.value.trim();
       if (query.length < 1) {
         suggestionsDiv.style.display = 'none';
@@ -249,8 +252,10 @@
       } else {
         // Live search
         try {
+          console.log('Fetching /api/search-values?field=' + config.field + '&q=' + query);
           const response = await fetch(`/api/search-values?field=${config.field}&q=${encodeURIComponent(query)}`);
           const data = await response.json();
+          console.log('Search response:', data);
           
           if (Array.isArray(data) && data.length > 0) {
             suggestionsDiv.innerHTML = data.map(item => `
