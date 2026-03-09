@@ -186,9 +186,19 @@
   let attrSearchTimer = null;
 
   attrFields.forEach(fieldId => {
+    console.log('Setting up attribute search for', fieldId);
     const input = document.getElementById(fieldId);
     const suggestionsDiv = document.getElementById(fieldId + '-suggestions');
     const field = fieldMap[fieldId];
+
+    if (!input) {
+      console.error('Input element not found:', fieldId);
+      return;
+    }
+    if (!suggestionsDiv) {
+      console.error('Suggestions div not found:', fieldId + '-suggestions');
+      return;
+    }
 
     input.addEventListener('input', (e) => {
       console.log('Attribute input on', fieldId, 'query:', e.target.value.trim());
@@ -207,6 +217,10 @@
           console.log('Attribute search response:', data);
 
           if (Array.isArray(data) && data.length > 0) {
+            // Position the suggestions below the input
+            suggestionsDiv.style.top = (input.offsetTop + input.offsetHeight) + 'px';
+            suggestionsDiv.style.left = input.offsetLeft + 'px';
+            suggestionsDiv.style.width = input.offsetWidth + 'px';
             suggestionsDiv.innerHTML = data.map(item => `
               <a href="#" class="list-group-item list-group-item-action" data-value="${item.value}">
                 ${item.value}
@@ -223,6 +237,10 @@
             });
             suggestionsDiv.style.display = 'block';
           } else {
+            // Position the suggestions below the input
+            suggestionsDiv.style.top = (input.offsetTop + input.offsetHeight) + 'px';
+            suggestionsDiv.style.left = input.offsetLeft + 'px';
+            suggestionsDiv.style.width = input.offsetWidth + 'px';
             suggestionsDiv.innerHTML = '<div class="list-group-item text-muted">No results</div>';
             suggestionsDiv.style.display = 'block';
           }
