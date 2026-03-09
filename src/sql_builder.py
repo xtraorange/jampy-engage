@@ -39,6 +39,7 @@ def generate_hierarchy_sql(
         # Simple query for all active employees, no hierarchy needed
         base_sql = """SELECT EMPLOYEE_ID,
        USERNAME,
+        JOB_CODE,
        JOB_TITLE,
        BU_CODE,
        COMPANY,
@@ -179,6 +180,7 @@ FROM ({base_sql}) cte{where_clause}"""
             
             hierarchy_parts.append(f"""SELECT EMPLOYEE_ID,
        USERNAME,
+          JOB_CODE,
        JOB_TITLE,
        BU_CODE,
        COMPANY,
@@ -194,6 +196,7 @@ AND status_code != 'T'{connect_by_exclude}""")
         # Single person or by_attributes
         hierarchy_sql = comment + f"""SELECT EMPLOYEE_ID,
        USERNAME,
+        JOB_CODE,
        JOB_TITLE,
        BU_CODE,
        COMPANY,
