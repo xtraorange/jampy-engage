@@ -1,10 +1,12 @@
 """API routes for AJAX calls."""
 from flask import Blueprint, request, jsonify
 import os
+import sys
 from datetime import datetime
 
 from ...services.config_service import ConfigService
 from ...sql_builder import generate_safe_hierarchy_sql
+from ...db import DatabaseExecutor
 
 api_bp = Blueprint('api', __name__)
 
@@ -23,7 +25,6 @@ def init_api_routes(app, base_path: str):
             return jsonify([])
 
         try:
-            from ...db import DatabaseExecutor
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
 
             # Build search conditions with support for full-name and partial name matching
@@ -104,7 +105,6 @@ def init_api_routes(app, base_path: str):
         column = field_map[field]
         
         try:
-            from ...db import DatabaseExecutor
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE {column} IS NOT NULL AND status_code != 'T' ORDER BY {column}"
             results = executor.run_query(sql)
@@ -138,33 +138,8 @@ def init_api_routes(app, base_path: str):
         column = field_map[field]
         
         try:
-            from ...db import DatabaseExecutor
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE {column} LIKE '%{query}%' AND status_code != 'T' ORDER BY {column}"
-            results = executor.run_query(sql)
-            items = []
-            for row in results[:20]:
-                if isinstance(row, dict):
-                    value = next(iter(row.values()), None)
-                else:
-                    value = row[0]
-                items.append({"value": value})
-            executor.close()
-            return jsonify(items)
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    def search_companies():
-        """Typeahead search for companies/countries."""
-        cfg = config_service.load_general_config()
-        query = request.args.get("q", "").strip()
-
-        if not query or len(query) < 1:
-            return jsonify([])
-
-        try:
-            from ...db import DatabaseExecutor
-            executor = DatabaseExecutor(cfg.get("oracle_tns"))
-            sql = f"SELECT DISTINCT COMPANY FROM omsadm.employee_mv WHERE COMPANY LIKE '%{query}%' AND status_code != 'T' ORDER BY COMPANY"
             results = executor.run_query(sql)
             items = []
             for row in results[:20]:
@@ -188,7 +163,6 @@ def init_api_routes(app, base_path: str):
             return jsonify([])
 
         try:
-            from ...db import DatabaseExecutor
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             sql = f"SELECT DISTINCT TREE_BRANCH FROM omsadm.employee_mv WHERE TREE_BRANCH LIKE '%{query}%' AND status_code != 'T' ORDER BY TREE_BRANCH"
             results = executor.run_query(sql)
@@ -226,7 +200,6 @@ def init_api_routes(app, base_path: str):
             if not sql:
                 return jsonify({"error": "No SQL provided"}), 400
 
-            from ..db import DatabaseExecutor
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             # Count records
             count_sql = f"SELECT COUNT(*) FROM ({sql})"
