@@ -1,7 +1,7 @@
 """SQL query builder for generating hierachical employee queries."""
 
 def generate_hierarchy_sql(
-    mode: str,  # "by_person" or "by_attributes"
+    mode: str,  # "by_person" or "by_attributes" or "all_employees"
     persons: list = None,  # list of {person_id, person_username} dicts
     person_id: str = None,  # deprecated: single person
     person_first_name: str = None,
@@ -21,12 +21,55 @@ def generate_hierarchy_sql(
     """
     Generate a hierarchy query. 
     
-    mode: "by_person" (search by name/id) or "by_attributes" (search by person attributes)
+    mode: "by_person" (search by name/id), "by_attributes" (search by person attributes), or "all_employees" (entire population)
     persons: list of persons with id and username for multiple person queries
     Returns: SQL query string
     """
     
-    if mode == "by_person":
+    if mode == "all_employees":
+        # Simple query for all active employees, no hierarchy needed
+        base_sql = """SELECT EMPLOYEE_ID,
+       USERNAME,
+       JOB_TITLE,
+       BU_CODE,
+       COMPANY,
+       TREE_BRANCH,
+       FULL_PART_TIME
+FROM omsadm.employee_mv
+WHERE status_code != 'T'"""
+        
+        # Build filters
+        filter_where_parts = []
+        
+        if filter_job_titles:
+            job_titles_csv = ",".join([f"'{jt}'" for jt in filter_job_titles])
+            filter_where_parts.append(f"cte.JOB_TITLE IN ({job_titles_csv})")
+        
+        if filter_bu_codes:
+            bu_codes_csv = ",".join([f"'{bc}'" for bc in filter_bu_codes])
+            filter_where_parts.append(f"cte.BU_CODE IN ({bu_codes_csv})")
+        
+        if filter_companies:
+            companies_csv = ",".join([f"'{c}'" for c in filter_companies])
+            filter_where_parts.append(f"cte.COMPANY IN ({companies_csv})")
+        
+        if filter_tree_branches:
+            branches_csv = ",".join([f"'{tb}'" for tb in filter_tree_branches])
+            filter_where_parts.append(f"cte.TREE_BRANCH IN ({branches_csv})")
+        
+        if filter_full_part_time:
+            filter_where_parts.append(f"cte.FULL_PART_TIME = '{filter_full_part_time}'")
+        
+        where_clause = ""
+        if filter_where_parts:
+            where_clause = "\nWHERE " + "\n  AND ".join(filter_where_parts)
+        
+        final_query = f"""SELECT cte.*
+FROM ({base_sql}) cte{where_clause}"""
+        
+        return final_query
+    
+    elif mode == "by_person":
         # Handle multiple persons or single person (backward compatibility)
         if not persons:
             if not person_id and not (person_first_name or person_last_name or person_username):
@@ -89,7 +132,7 @@ def generate_hierarchy_sql(
         
         root_where = "\n".join(where_parts)
     else:
-        raise ValueError("mode must be 'by_person' or 'by_attributes'")
+        raise ValueError("mode must be 'by_person', 'by_attributes', or 'all_employees'")
     
     # Build a friendly comment indicating the root employee(s) (if known)
     comment = ''

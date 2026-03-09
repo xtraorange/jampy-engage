@@ -7,24 +7,33 @@
 
 <div class="row">
   <div class="col-lg-6">
-    <div class="card">
-      <div class="card-header">
-        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+    <!-- STEP 1: Define Hierarchy Pool -->
+    <div class="card mb-4">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">Step 1: Define Hierarchy Pool</h5>
+        <small>Choose where your hierarchy starts from</small>
+      </div>
+      <div class="card-body">
+        <ul class="nav nav-tabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="nav-link active" id="by-person-tab" data-bs-toggle="tab" data-bs-target="#by-person" type="button" role="tab" aria-controls="by-person" aria-selected="true">
-              Hierarchy - By Person
+              By Person
             </button>
           </li>
           <li class="nav-item" role="presentation">
-            <button class="nav-link" id="by-attributes-tab" data-bs-toggle="tab" data-bs-target="#by-attributes" type="button" role="tab" aria-controls="by-attributes" aria-selected="false">
-              Hierarchy - By Role
+            <button class="nav-link" id="by-role-tab" data-bs-toggle="tab" data-bs-target="#by-role" type="button" role="tab" aria-controls="by-role" aria-selected="false">
+              By Role
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="all-employees-tab" data-bs-toggle="tab" data-bs-target="#all-employees" type="button" role="tab" aria-controls="all-employees" aria-selected="false">
+              All Employees
             </button>
           </li>
         </ul>
-      </div>
-      <div class="card-body">
-        <div class="tab-content">
-          <!-- Hierarchy - By Person Tab -->
+
+        <div class="tab-content pt-3">
+          <!-- By Person Tab -->
           <div class="tab-pane fade show active" id="by-person" role="tabpanel" aria-labelledby="by-person-tab">
             <div class="mb-3">
               <label for="person-search" class="form-label">Find Employee(s)</label>
@@ -40,8 +49,8 @@
             </div>
           </div>
 
-          <!-- Hierarchy - By Role Tab -->
-          <div class="tab-pane fade" id="by-attributes" role="tabpanel" aria-labelledby="by-attributes-tab">
+          <!-- By Role Tab -->
+          <div class="tab-pane fade" id="by-role" role="tabpanel" aria-labelledby="by-role-tab">
             <p class="text-muted small mb-3">Find people with these attributes, then build their hierarchy</p>
             <div class="mb-3">
               <label for="attr-job-title" class="form-label">Job Title(s)/Job Code(s)</label>
@@ -68,13 +77,23 @@
               <div id="attr-tree-branch-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
             </div>
           </div>
+
+          <!-- All Employees Tab -->
+          <div class="tab-pane fade" id="all-employees" role="tabpanel" aria-labelledby="all-employees-tab">
+            <p class="text-muted">Using all active employees in the system as the starting pool</p>
+          </div>
         </div>
+      </div>
+    </div>
 
-        <hr>
-
-        <!-- Filters Section -->
-        <h5>Filters (applied to hierarchy results)</h5>
-        <p class="text-muted small">Leave blank to include all</p>
+    <!-- STEP 2: Filter Results -->
+    <div class="card">
+      <div class="card-header bg-info text-white">
+        <h5 class="mb-0">Step 2: Filter Results</h5>
+        <small>Narrow down the results (optional)</small>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">Leave all blank to include everyone in the pool</p>
 
         <div class="mb-3">
           <label for="filter-job-titles" class="form-label">Job Title(s)/Job Code(s)</label>
@@ -112,11 +131,8 @@
             <option value="P">Part Time</option>
           </select>
         </div>
-
-        <button type="button" id="btn-generate" class="btn btn-primary" style="display: none;">Generate Query</button>
       </div>
     </div>
-  </div>
 
   <div class="col-lg-6">
     <!-- SQL Preview -->
@@ -257,13 +273,18 @@
   // Tab switching
   document.getElementById('by-person-tab').addEventListener('click', () => {
     currentMode = 'by_person';
-    selectedPerson = null;
-    document.getElementById('selected-person').style.display = 'none';
+    selectedPersons = [];
+    updatePersonTagsDisplay();
     updateSQL();
   });
 
-  document.getElementById('by-attributes-tab').addEventListener('click', () => {
+  document.getElementById('by-role-tab').addEventListener('click', () => {
     currentMode = 'by_attributes';
+    updateSQL();
+  });
+
+  document.getElementById('all-employees-tab').addEventListener('click', () => {
+    currentMode = 'all_employees';
     updateSQL();
   });
 
@@ -503,12 +524,12 @@
         })),
         exclude_root: document.getElementById('person-exclude-root').checked,
       };
-    } else {
+    } else if (currentMode === 'by_attributes') {
       mode = 'by_attributes';
-      const jobTitle = document.getElementById('attr-job-title').value.trim();
-      const buCode = document.getElementById('attr-bu-code').value.trim();
-      const company = document.getElementById('attr-company').value.trim();
-      const branch = document.getElementById('attr-tree-branch').value.trim();
+      const jobTitle = fieldTags['attr-job-title'][0] || '';
+      const buCode = fieldTags['attr-bu-code'][0] || '';
+      const company = fieldTags['attr-company'][0] || '';
+      const branch = fieldTags['attr-tree-branch'][0] || '';
 
       if (!jobTitle && !buCode && !company && !branch) {
         // Clear SQL if no attributes
@@ -526,14 +547,16 @@
         attributes_company: company || null,
         attributes_tree_branch: branch || null,
       };
+    } else if (currentMode === 'all_employees') {
+      mode = 'all_employees';
+      payload = { mode };
     }
 
-    // Add filters
-    const parseList = (str) => str ? str.split(',').map(s => s.trim()).filter(s => s) : [];
-    payload.filter_job_titles = parseList(document.getElementById('filter-job-titles').value);
-    payload.filter_bu_codes = parseList(document.getElementById('filter-bu-codes').value);
-    payload.filter_companies = parseList(document.getElementById('filter-companies').value);
-    payload.filter_tree_branches = parseList(document.getElementById('filter-tree-branches').value);
+    // Add filters from tag fields
+    payload.filter_job_titles = fieldTags['filter-job-titles'] || [];
+    payload.filter_bu_codes = fieldTags['filter-bu-codes'] || [];
+    payload.filter_companies = fieldTags['filter-companies'] || [];
+    payload.filter_tree_branches = fieldTags['filter-tree-branches'] || [];
     payload.filter_full_part_time = document.getElementById('filter-full-part-time').value || null;
 
     try {
