@@ -4,6 +4,9 @@
 
 {% block content %}
 <h1>Create New Group</h1>
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
 <form method="post">
   <div class="row">
     <div class="col-md-6">
@@ -34,13 +37,21 @@
     </div>
     <div class="col-md-6">
       <fieldset>
-        <legend class="mb-3">SQL Query</legend>
+        <legend class="mb-3">Query Configuration</legend>
+        <input type="hidden" id="query_builder_json" name="query_builder_json" value="">
+
         <div class="mb-3">
-          <label for="query" class="form-label">Query</label>
-          <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;">SELECT * FROM dual;</textarea>
+          <label class="form-label">Builder Method and Parameters</label>
+          <pre id="builder-summary" class="form-control" style="min-height: 120px; white-space: pre-wrap;">No query builder parameters selected yet.</pre>
           <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-use-builder">
             🔨 Use Query Builder
           </button>
+        </div>
+
+        <div class="mb-3">
+          <label for="query" class="form-label">Override SQL Script (Optional)</label>
+          <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;" placeholder="Leave blank to use Query Builder parameters at report time."></textarea>
+          <small class="form-text text-muted">If provided, this override script is used instead of generated SQL.</small>
         </div>
       </fieldset>
     </div>
@@ -61,7 +72,23 @@
       tags: document.getElementById('tags').value,
       email_recipient: document.getElementById('email_recipient').value,
       query: document.getElementById('query').value,
+      query_builder_json: document.getElementById('query_builder_json').value,
     };
+  }
+
+  function updateBuilderSummary() {
+    const raw = document.getElementById('query_builder_json').value;
+    const summary = document.getElementById('builder-summary');
+    if (!raw) {
+      summary.textContent = 'No query builder parameters selected yet.';
+      return;
+    }
+    try {
+      const params = JSON.parse(raw);
+      summary.textContent = JSON.stringify(params, null, 2);
+    } catch (_) {
+      summary.textContent = 'Unable to read builder parameters.';
+    }
   }
 
   function restoreDraft() {
@@ -74,14 +101,17 @@
       if (typeof draft.tags === 'string') document.getElementById('tags').value = draft.tags;
       if (typeof draft.email_recipient === 'string') document.getElementById('email_recipient').value = draft.email_recipient;
       if (typeof draft.query === 'string') document.getElementById('query').value = draft.query;
+      if (typeof draft.query_builder_json === 'string') document.getElementById('query_builder_json').value = draft.query_builder_json;
     } catch (_) {
       // Ignore malformed session data.
     }
+    updateBuilderSummary();
   }
 
   document.getElementById('btn-use-builder').addEventListener('click', (e) => {
     e.preventDefault();
     sessionStorage.setItem(draftKey, JSON.stringify(collectDraft()));
+    sessionStorage.setItem('query_builder_initial_params', document.getElementById('query_builder_json').value || '{}');
     // Redirect to query builder with return path
     sessionStorage.setItem('return_to', window.location.pathname);
     window.location.href = '/query-builder';
@@ -90,9 +120,15 @@
   // Check if returning from query builder
   window.addEventListener('load', () => {
     restoreDraft();
-    const acceptedQuery = sessionStorage.getItem('accepted_query_sql');
-    if (acceptedQuery) {
-      document.getElementById('query').value = acceptedQuery;
+    const acceptedBuilderParams = sessionStorage.getItem('accepted_query_builder_params');
+    if (acceptedBuilderParams) {
+      document.getElementById('query_builder_json').value = acceptedBuilderParams;
+      updateBuilderSummary();
+      sessionStorage.removeItem('accepted_query_builder_params');
+    }
+    const acceptedOverrideQuery = sessionStorage.getItem('accepted_query_sql');
+    if (acceptedOverrideQuery) {
+      document.getElementById('query').value = acceptedOverrideQuery;
       sessionStorage.removeItem('accepted_query_sql');
     }
   });

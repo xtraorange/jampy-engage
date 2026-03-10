@@ -160,19 +160,7 @@ FROM ({base_sql}) cte{where_clause}"""
     else:
         raise ValueError("mode must be 'by_person', 'by_attributes', or 'all_employees'")
     
-    # Build a friendly comment indicating root employee(s) by name and title.
     comment = ""
-    if root_people:
-        root_labels = []
-        for person in root_people:
-            first = (person.get("first_name") or "").strip()
-            last = (person.get("last_name") or "").strip()
-            name = f"{first} {last}".strip()
-            title = (person.get("job_title") or "No title").strip()
-            if name:
-                root_labels.append(f"{name} - {title}")
-        if root_labels:
-            comment = "-- roots: " + " / ".join(root_labels) + "\n"
 
     # Build the hierarchy using Oracle CONNECT BY syntax for each person
     hierarchy_parts = []
@@ -266,7 +254,7 @@ AND status_code != 'T'{f" AND USERNAME <> '{person_username}'" if mode=='by_pers
     if filter_where_parts:
         where_clause = "\nWHERE " + "\n  AND ".join(filter_where_parts)
     
-    final_query = f"""{comment}SELECT cte.USERNAME
+    final_query = f"""SELECT cte.USERNAME
 FROM ({hierarchy_sql}) cte{where_clause}"""
     
     return final_query

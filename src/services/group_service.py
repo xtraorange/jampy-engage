@@ -42,7 +42,8 @@ class GroupService:
         handle: str,
         display_name: str,
         tags: List[str],
-        query: str,
+        query: Optional[str] = None,
+        query_builder: Optional[dict] = None,
         email_recipient: Optional[str] = None
     ) -> Group:
         """Create a new group."""
@@ -63,16 +64,19 @@ class GroupService:
         }
         if email_recipient:
             config["email_recipient"] = email_recipient
+        if query_builder:
+            config["query_builder"] = query_builder
 
         import yaml
         group_cfg_path = os.path.join(group_dir, "group.yaml")
         with open(group_cfg_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(config, f)
 
-        # Create query.sql
-        query_path = os.path.join(group_dir, "query.sql")
-        with open(query_path, "w", encoding="utf-8") as f:
-            f.write(query)
+        # Create override query.sql only if provided.
+        if query is not None and query.strip():
+            query_path = os.path.join(group_dir, "query.sql")
+            with open(query_path, "w", encoding="utf-8") as f:
+                f.write(query)
 
         return Group(group_dir)
 
@@ -82,6 +86,7 @@ class GroupService:
         display_name: Optional[str] = None,
         tags: Optional[List[str]] = None,
         query: Optional[str] = None,
+        query_builder: Optional[dict] = None,
         email_recipient: Optional[str] = None,
         output_dir: Optional[str] = None
     ) -> None:
@@ -102,6 +107,11 @@ class GroupService:
                 config.pop("output_dir", None)
             else:
                 config["output_dir"] = output_dir
+        if query_builder is not None:
+            if query_builder:
+                config["query_builder"] = query_builder
+            else:
+                config.pop("query_builder", None)
 
         # Save config
         import yaml
@@ -109,10 +119,13 @@ class GroupService:
         with open(cfg_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(config, f)
 
-        # Update query if provided
+        # Update override query (empty string removes override file).
         if query is not None:
-            with open(group.query_file, "w", encoding="utf-8") as f:
-                f.write(query)
+            if query.strip():
+                with open(group.query_file, "w", encoding="utf-8") as f:
+                    f.write(query)
+            elif os.path.exists(group.query_file):
+                os.remove(group.query_file)
 
     def delete_group(self, group: Group) -> None:
         """Delete a group and all its files."""

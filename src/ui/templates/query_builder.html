@@ -296,7 +296,6 @@
   let selectedPersons = [];
 
   function addPersonTag(person) {
-    const personStr = `${person.first_name} ${person.last_name} (${person.id})`;
     if (!selectedPersons.find(p => p.id === person.id)) {
       selectedPersons.push(person);
     }
@@ -320,6 +319,7 @@
   }
 
   let currentSQL = '';
+  let currentBuilderParams = null;
 
   // Field mapping for attribute search
   const fieldMap = {
@@ -341,7 +341,6 @@
   // Tab switching
   document.getElementById('by-person-tab').addEventListener('click', () => {
     currentMode = 'by_person';
-    selectedPersons = [];
     updatePersonTagsDisplay();
     updateSQL();
   });
@@ -679,6 +678,13 @@
           person_id: p.id,
           person_username: p.username
         })),
+        selected_person_details: selectedPersons.map(p => ({
+          id: p.id,
+          first_name: p.first_name,
+          last_name: p.last_name,
+          username: p.username,
+          job_title: p.job_title || ''
+        })),
         root_people: selectedPersons.map(p => ({
           first_name: p.first_name,
           last_name: p.last_name,
@@ -724,6 +730,7 @@
     payload.filter_tree_branches = fieldTags['filter-tree-branches'] || [];
     payload.filter_department_ids = fieldTags['filter-department-ids'] || [];
     payload.filter_full_part_time = document.getElementById('filter-full-part-time').value || null;
+    currentBuilderParams = JSON.parse(JSON.stringify(payload));
 
     try {
       const response = await fetch('/api/generate-builder-sql', {
@@ -778,10 +785,55 @@
     }
   });
 
-  // Accept SQL
+  function applyBuilderParams(params) {
+    if (!params || typeof params !== 'object') return;
+
+    const mode = params.mode || 'by_person';
+    if (mode === 'by_attributes') {
+      document.getElementById('by-role-tab').click();
+    } else if (mode === 'all_employees') {
+      document.getElementById('all-employees-tab').click();
+    } else {
+      document.getElementById('by-person-tab').click();
+    }
+
+    selectedPersons = Array.isArray(params.selected_person_details) ? params.selected_person_details : [];
+    updatePersonTagsDisplay();
+
+    const restoreFields = [
+      ['attr-job-title', params.attributes_job_title ? [params.attributes_job_title] : []],
+      ['attr-bu-code', params.attributes_bu_code ? [params.attributes_bu_code] : []],
+      ['attr-company', params.attributes_company ? [params.attributes_company] : []],
+      ['attr-tree-branch', params.attributes_tree_branch ? [params.attributes_tree_branch] : []],
+      ['attr-department-id', params.attributes_department_id ? [params.attributes_department_id] : []],
+      ['filter-job-titles', params.filter_job_titles || []],
+      ['filter-bu-codes', params.filter_bu_codes || []],
+      ['filter-companies', params.filter_companies || []],
+      ['filter-tree-branches', params.filter_tree_branches || []],
+      ['filter-department-ids', params.filter_department_ids || []],
+    ];
+
+    restoreFields.forEach(([fieldId, values]) => {
+      fieldTags[fieldId] = Array.isArray(values) ? values : [];
+      updateTagsDisplay(fieldId);
+      const input = document.getElementById(fieldId);
+      if (input) {
+        input.value = fieldTags[fieldId].join(', ');
+      }
+    });
+
+    document.getElementById('person-exclude-root').checked = !!params.exclude_root;
+    document.getElementById('filter-full-part-time').value = params.filter_full_part_time || '';
+
+    updateRolePreview();
+    updateSQL();
+  }
+
+  // Accept builder params
   document.getElementById('btn-accept-sql').addEventListener('click', () => {
-    // Store SQL in sessionStorage and go back to previous page
-    sessionStorage.setItem('accepted_query_sql', currentSQL);
+    if (currentBuilderParams) {
+      sessionStorage.setItem('accepted_query_builder_params', JSON.stringify(currentBuilderParams));
+    }
     // Try to get the return path, otherwise go back
     const returnTo = sessionStorage.getItem('return_to');
     if (returnTo) {
@@ -813,5 +865,19 @@
       window.history.back();
     }
   });
+
+  // Initialize from saved params when opened from group screens.
+  const initialParamsRaw = sessionStorage.getItem('query_builder_initial_params');
+  if (initialParamsRaw) {
+    try {
+      const initialParams = JSON.parse(initialParamsRaw);
+      if (initialParams && Object.keys(initialParams).length > 0) {
+        applyBuilderParams(initialParams);
+      }
+    } catch (_) {
+      // Ignore malformed initial params.
+    }
+    sessionStorage.removeItem('query_builder_initial_params');
+  }
 </script>
 {% endblock %}

@@ -4,6 +4,9 @@
 
 {% block content %}
 <h1>Edit Group: {{ group.handle }}</h1>
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
 <form method="post">
   <div class="row">
     <div class="col-md-6">
@@ -37,13 +40,38 @@
     </div>
     <div class="col-md-6">
       <fieldset>
-        <legend class="mb-3">SQL Query</legend>
+        <legend class="mb-3">Query Configuration</legend>
+        <input type="hidden" id="query_builder_json" name="query_builder_json" value='{{ config.query_builder_json | e }}'>
+
         <div class="mb-3">
-          <label for="query" class="form-label">Query</label>
-          <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;">{{ config.query }}</textarea>
+          <label class="form-label">Builder Method and Parameters</label>
+          {% if config.has_override_query %}
+          <div class="alert alert-warning py-2">
+            Override SQL is active. Saved builder parameters are shown below but are ignored until override is removed.
+          </div>
+          {% endif %}
+          <pre id="builder-summary" class="form-control" style="min-height: 140px; white-space: pre-wrap;">No query builder parameters selected yet.</pre>
           <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-use-builder">
             🔨 Use Query Builder
           </button>
+        </div>
+
+        <div class="mb-3">
+          <label for="query" class="form-label">Override SQL Script</label>
+          <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;" placeholder="Leave blank to use Query Builder parameters at report time.">{{ config.override_query }}</textarea>
+          <small class="form-text text-muted">If provided, this override script is used instead of generated SQL.</small>
+          {% if config.has_override_query %}
+          <button
+            type="submit"
+            class="btn btn-sm btn-outline-danger mt-2"
+            formmethod="post"
+            formaction="{{ url_for('groups.remove_override', handle=group.handle) }}"
+            formnovalidate
+            onclick="return confirm('Remove custom SQL override and use saved builder parameters?');"
+          >
+            Remove Override SQL Script
+          </button>
+          {% endif %}
         </div>
       </fieldset>
     </div>
@@ -64,7 +92,23 @@
       email_recipient: document.getElementById('email_recipient').value,
       output_dir: document.getElementById('output_dir').value,
       query: document.getElementById('query').value,
+      query_builder_json: document.getElementById('query_builder_json').value,
     };
+  }
+
+  function updateBuilderSummary() {
+    const raw = document.getElementById('query_builder_json').value;
+    const summary = document.getElementById('builder-summary');
+    if (!raw || raw === '{}') {
+      summary.textContent = 'No query builder parameters selected yet.';
+      return;
+    }
+    try {
+      const params = JSON.parse(raw);
+      summary.textContent = JSON.stringify(params, null, 2);
+    } catch (_) {
+      summary.textContent = 'Unable to read builder parameters.';
+    }
   }
 
   function restoreDraft() {
@@ -77,9 +121,11 @@
       if (typeof draft.email_recipient === 'string') document.getElementById('email_recipient').value = draft.email_recipient;
       if (typeof draft.output_dir === 'string') document.getElementById('output_dir').value = draft.output_dir;
       if (typeof draft.query === 'string') document.getElementById('query').value = draft.query;
+      if (typeof draft.query_builder_json === 'string') document.getElementById('query_builder_json').value = draft.query_builder_json;
     } catch (_) {
       // Ignore malformed session data.
     }
+    updateBuilderSummary();
   }
 
   document.getElementById('browse_output_dir').addEventListener('click', async function() {
@@ -97,6 +143,7 @@
   document.getElementById('btn-use-builder').addEventListener('click', (e) => {
     e.preventDefault();
     sessionStorage.setItem(draftKey, JSON.stringify(collectDraft()));
+    sessionStorage.setItem('query_builder_initial_params', document.getElementById('query_builder_json').value || '{}');
     // Redirect to query builder with return path
     sessionStorage.setItem('return_to', window.location.pathname);
     window.location.href = '/query-builder';
@@ -105,9 +152,15 @@
   // Check if returning from query builder
   window.addEventListener('load', () => {
     restoreDraft();
-    const acceptedQuery = sessionStorage.getItem('accepted_query_sql');
-    if (acceptedQuery) {
-      document.getElementById('query').value = acceptedQuery;
+    const acceptedBuilderParams = sessionStorage.getItem('accepted_query_builder_params');
+    if (acceptedBuilderParams) {
+      document.getElementById('query_builder_json').value = acceptedBuilderParams;
+      updateBuilderSummary();
+      sessionStorage.removeItem('accepted_query_builder_params');
+    }
+    const acceptedOverrideQuery = sessionStorage.getItem('accepted_query_sql');
+    if (acceptedOverrideQuery) {
+      document.getElementById('query').value = acceptedOverrideQuery;
       sessionStorage.removeItem('accepted_query_sql');
     }
   });

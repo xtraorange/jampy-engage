@@ -1,5 +1,6 @@
 """Group management routes."""
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify
+import json
 import os
 
 from ...services.group_service import GroupService
@@ -33,6 +34,23 @@ def init_groups_routes(app, base_path: str):
             email_recipient = request.form.get("email_recipient", "").strip()
             output_dir = request.form.get("output_dir", "").strip()
             query = request.form.get("query", "").strip()
+            query_builder_raw = request.form.get("query_builder_json", "").strip()
+
+            query_builder = None
+            if query_builder_raw:
+                try:
+                    query_builder = json.loads(query_builder_raw)
+                except json.JSONDecodeError:
+                    query_builder = None
+
+            if not query and not query_builder:
+                cfg = group.config.copy()
+                cfg["tags_str"] = ",".join(cfg.get("tags", []))
+                cfg["has_override_query"] = group.has_override_query()
+                cfg["override_query"] = group.read_override_query() if cfg["has_override_query"] else ""
+                cfg["query_builder"] = cfg.get("query_builder")
+                cfg["query_builder_json"] = json.dumps(cfg.get("query_builder") or {})
+                return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.")
 
             tags = [t.strip() for t in tags_str.split(",") if t.strip()]
 
@@ -41,6 +59,7 @@ def init_groups_routes(app, base_path: str):
                 display_name=display_name,
                 tags=tags,
                 query=query,
+                query_builder=query_builder,
                 email_recipient=email_recipient or None,
                 output_dir=output_dir or None
             )
@@ -50,7 +69,10 @@ def init_groups_routes(app, base_path: str):
         # Prepare data for template
         cfg = group.config.copy()
         cfg["tags_str"] = ",".join(cfg.get("tags", []))
-        cfg["query"] = group.read_query()
+        cfg["has_override_query"] = group.has_override_query()
+        cfg["override_query"] = group.read_override_query() if cfg["has_override_query"] else ""
+        cfg["query_builder"] = cfg.get("query_builder")
+        cfg["query_builder_json"] = json.dumps(cfg.get("query_builder") or {})
 
         return render_template("group.html", group=group, config=cfg)
 
@@ -65,7 +87,18 @@ def init_groups_routes(app, base_path: str):
             display_name = request.form.get("display_name", handle).strip()
             tags = [t.strip() for t in request.form.get("tags", "").split(",") if t.strip()]
             email_recipient = request.form.get("email_recipient", "").strip() or None
-            query = request.form.get("query", "SELECT * FROM dual;").strip()
+            query = request.form.get("query", "").strip()
+            query_builder_raw = request.form.get("query_builder_json", "").strip()
+
+            query_builder = None
+            if query_builder_raw:
+                try:
+                    query_builder = json.loads(query_builder_raw)
+                except json.JSONDecodeError:
+                    query_builder = None
+
+            if not query and not query_builder:
+                return render_template("group_new.html", error="Create either Query Builder parameters or an override SQL script.")
 
             try:
                 group_service.create_group(
@@ -73,6 +106,7 @@ def init_groups_routes(app, base_path: str):
                     display_name=display_name,
                     tags=tags,
                     query=query,
+                    query_builder=query_builder,
                     email_recipient=email_recipient
                 )
                 return redirect(url_for("groups.groups"))
@@ -93,5 +127,15 @@ def init_groups_routes(app, base_path: str):
             return redirect(url_for("groups.groups"))
         except Exception as e:
             return f"Error deleting group: {str(e)}", 500
+
+    @groups_bp.route("/group/<handle>/remove-override", methods=["POST"])
+    def remove_override(handle):
+        """Remove override query.sql so group uses saved query builder params."""
+        group = group_service.get_group(handle)
+        if group is None:
+            return "Group not found", 404
+
+        group_service.update_group(group=group, query="")
+        return redirect(url_for("groups.edit_group", handle=handle))
 
     return groups_bp
