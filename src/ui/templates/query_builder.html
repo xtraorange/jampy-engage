@@ -270,12 +270,21 @@
     fieldTags[fieldId] = fieldTags[fieldId].filter(v => v !== value);
     updateTagsDisplay(fieldId);
     updateInputValue(fieldId);
+  }
+
+  function updateTagsDisplay(fieldId) {
+    const tagsDiv = document.getElementById(fieldId + '-tags');
+    if (!tagsDiv) {
+      return;
+    }
+    tagsDiv.innerHTML = fieldTags[fieldId].map(value => `
       <span class="badge bg-primary d-inline-flex align-items-center gap-1">
         ${value}
         <button type="button" class="btn-close btn-close-white" aria-label="Remove" onclick="removeTag('${fieldId}', '${value.replace(/'/g, "\\'")}')"></button>
       </span>
     `).join('');
   }
+
   function updateInputValue(fieldId) {
     const input = document.getElementById(fieldId);
     input.value = fieldTags[fieldId].join(', ');
