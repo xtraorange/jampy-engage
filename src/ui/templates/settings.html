@@ -65,6 +65,13 @@
             <span class="badge bg-secondary" data-bs-toggle="tooltip" title="If checked, emails will be sent automatically. If unchecked, they'll open in Outlook for manual review.">?</span>
           </label>
         </div>
+        <div class="mb-3">
+          <label for="email_recipient" class="form-label">
+            Default Recipient
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Default email address for report delivery (can be overridden per group)">?</span>
+          </label>
+          <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}" placeholder="e.g., reports@company.com">
+        </div>
       </fieldset>
 
       <fieldset>
@@ -99,13 +106,7 @@
           </label>
           <input type="email" class="form-control" id="smtp_from" name="smtp_from" value="{{ config.smtp_from }}" placeholder="e.g., noreply@company.com">
         </div>
-        <div class="mb-3">
-          <label for="email_recipient" class="form-label">
-            Default Recipient
-            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Default email address for report delivery (can be overridden per group)">?</span>
-          </label>
-          <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}" placeholder="e.g., reports@company.com">
-        </div>
+        
       </fieldset>
     </div>
   </div>
