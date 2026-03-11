@@ -7,20 +7,169 @@
   <h1>Groups</h1>
   <a href="{{ url_for('groups.new_group') }}" class="btn btn-primary">+ New Group</a>
 </div>
-<ul class="list-group">
+
+<div class="row mb-3 g-2">
+  <div class="col-md-8">
+    <input type="text" id="groupSearch" class="form-control" placeholder="Search groups by name or handle...">
+  </div>
+  <div class="col-md-4">
+    <select id="groupSort" class="form-select">
+      <option value="name-asc">Name A → Z</option>
+      <option value="name-desc">Name Z → A</option>
+      <option value="handle-asc">Handle A → Z</option>
+      <option value="handle-desc">Handle Z → A</option>
+    </select>
+  </div>
+</div>
+
+<div id="noResults" class="alert alert-info" style="display: none;">No groups match your search.</div>
+
+<div class="row" id="groupGrid">
 {% for g in groups %}
-  <li class="list-group-item d-flex justify-content-between align-items-center">
-    <div>
-      <strong>{{ g.handle }}</strong>
-      <small class="d-block text-muted">{{ g.display_name }}</small>
+  <div class="col-md-6 col-lg-4 mb-3 group-card-container" data-handle="{{ g.handle | lower }}" data-name="{{ (g.display_name or g.handle) | lower }}">
+    <div class="card h-100">
+      <div class="card-header">
+        <h5 class="card-title mb-0 text-break">{{ g.display_name or g.handle }}</h5>
+        {% if g.display_name %}
+          <small>{{ g.handle }}</small>
+        {% endif %}
+      </div>
+      <div class="card-body d-flex flex-column">
+        {% if g.tags %}
+          <div class="mb-2">
+            <div class="text-muted small fw-semibold mb-1">Tags</div>
+            <div class="d-flex flex-wrap gap-1">
+              {% for tag in g.tags | sort %}
+                <span class="badge badge-soft">{{ tag }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        {% else %}
+          <div class="mb-2 text-muted small">No tags</div>
+        {% endif %}
+
+        <div class="mb-2 small">
+          <span class="text-muted fw-semibold">Query:&nbsp;</span>
+          {% if g.has_override_query() %}
+            <span>Override SQL</span>
+          {% elif g.config.get('query_builder') %}
+            <span>Builder</span>
+          {% else %}
+            <span class="text-muted">No Query</span>
+          {% endif %}
+        </div>
+
+        {% if g.config.get('email_recipient') %}
+          <div class="mb-2 text-truncate">
+            <span class="text-muted small fw-semibold">Recipient:&nbsp;</span>
+            <span class="small">{{ g.config['email_recipient'] }}</span>
+          </div>
+        {% endif %}
+      </div>
+      <div class="card-footer bg-light d-flex gap-2">
+        <a href="{{ url_for('groups.edit_group', handle=g.handle) }}" class="btn btn-sm btn-outline-primary flex-grow-1">Edit</a>
+        <form method="post" action="{{ url_for('groups.delete_group', handle=g.handle) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this group? This action cannot be undone.');" class="flex-grow-1">
+          <button type="submit" class="btn btn-sm btn-outline-danger w-100">Delete</button>
+        </form>
+      </div>
     </div>
-    <div class="btn-group" role="group">
-      <a href="{{ url_for('groups.edit_group', handle=g.handle) }}" class="btn btn-sm btn-outline-primary">Edit</a>
-      <form method="post" action="{{ url_for('groups.delete_group', handle=g.handle) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this group? This action cannot be undone.');">
-        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-      </form>
-    </div>
-  </li>
+  </div>
 {% endfor %}
-</ul>
+</div>
+
+<div id="paginationControls" class="d-flex justify-content-between align-items-center mt-3" hidden>
+  <button id="prevPage" class="btn btn-outline-secondary btn-sm">← Previous</button>
+  <span id="pageInfo" class="text-muted small"></span>
+  <button id="nextPage" class="btn btn-outline-secondary btn-sm">Next →</button>
+</div>
+
+<style>
+  .group-card-container {
+    transition: opacity 0.2s ease-in-out;
+  }
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const PAGE_SIZE = 12;
+    let currentPage = 0;
+    let currentSort = 'name-asc';
+    let searchTerm = '';
+
+    const allCards = Array.from(document.querySelectorAll('.group-card-container'));
+    const grid = document.getElementById('groupGrid');
+    const noResults = document.getElementById('noResults');
+    const paginationControls = document.getElementById('paginationControls');
+    const pageInfo = document.getElementById('pageInfo');
+    const prevBtn = document.getElementById('prevPage');
+    const nextBtn = document.getElementById('nextPage');
+
+    function getName(card) { return card.dataset.name || ''; }
+    function getHandle(card) { return card.dataset.handle || ''; }
+
+    function updateDisplay() {
+      const filtered = allCards.filter(card => {
+        if (!searchTerm) return true;
+        return getName(card).includes(searchTerm) || getHandle(card).includes(searchTerm);
+      });
+
+      filtered.sort((a, b) => {
+        if (currentSort === 'name-asc')    return getName(a).localeCompare(getName(b));
+        if (currentSort === 'name-desc')   return getName(b).localeCompare(getName(a));
+        if (currentSort === 'handle-asc')  return getHandle(a).localeCompare(getHandle(b));
+        if (currentSort === 'handle-desc') return getHandle(b).localeCompare(getHandle(a));
+        return 0;
+      });
+
+      allCards.forEach(c => c.style.display = 'none');
+
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      currentPage = Math.max(0, Math.min(currentPage, totalPages - 1));
+
+      filtered.forEach(card => grid.appendChild(card));
+
+      const start = currentPage * PAGE_SIZE;
+      filtered.forEach((card, i) => {
+        card.style.display = (i >= start && i < start + PAGE_SIZE) ? '' : 'none';
+      });
+
+      noResults.style.display = filtered.length === 0 ? 'block' : 'none';
+
+      if (filtered.length > PAGE_SIZE) {
+        paginationControls.hidden = false;
+        pageInfo.textContent = `Page ${currentPage + 1} of ${totalPages} (${filtered.length} groups)`;
+        prevBtn.disabled = currentPage === 0;
+        nextBtn.disabled = currentPage >= totalPages - 1;
+      } else {
+        paginationControls.hidden = true;
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+      }
+    }
+
+    document.getElementById('groupSearch').addEventListener('input', function() {
+      searchTerm = this.value.toLowerCase().trim();
+      currentPage = 0;
+      updateDisplay();
+    });
+
+    document.getElementById('groupSort').addEventListener('change', function() {
+      currentSort = this.value;
+      currentPage = 0;
+      updateDisplay();
+    });
+
+    prevBtn.addEventListener('click', () => {
+      if (currentPage === 0) return;
+      currentPage--;
+      updateDisplay();
+    });
+    nextBtn.addEventListener('click', () => {
+      currentPage++;
+      updateDisplay();
+    });
+
+    updateDisplay();
+  });
+</script>
 {% endblock %}

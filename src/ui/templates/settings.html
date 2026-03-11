@@ -3,27 +3,19 @@
 {% block title %}App Settings{% endblock %}
 
 {% block content %}
-<h1>General Settings</h1>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1>General Settings</h1>
+</div>
+
 <form method="post" class="mb-4">
   <div class="row">
     <div class="col-md-6">
       <fieldset class="mb-4">
         <legend class="mb-3">
-          Database Settings
-        </legend>
-        <div class="mb-3">
-          <label for="oracle_tns" class="form-label">
-            Oracle TNS
-            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="The Oracle TNS string for your database connection (e.g., tnsname or full connection string)">?</span>
-          </label>
-          <input type="text" class="form-control" id="oracle_tns" name="oracle_tns" value="{{ config.oracle_tns }}" placeholder="e.g., MYDB or server:1521/MYDB">
-        </div>
-      </fieldset>
-
-      <fieldset class="mb-4">
-        <legend class="mb-3">
           Output Settings
         </legend>
+        <div class="field-padded">
         <div class="mb-3">
           <label for="output_dir" class="form-label">
             Output Directory
@@ -48,13 +40,13 @@
           </label>
           <input type="number" class="form-control" id="max_workers" name="max_workers" value="{{ config.max_workers }}" placeholder="Defaults to CPU count">
         </div>
+        </div>
       </fieldset>
-    </div>
-    <div class="col-md-6">
       <fieldset class="mb-4">
         <legend class="mb-3">
           Email Settings
         </legend>
+        <div class="field-padded">
         <div class="mb-3">
           <label for="email_method" class="form-label">
             Email Method
@@ -79,12 +71,15 @@
           </label>
           <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}" placeholder="e.g., reports@company.com">
         </div>
+        </div>
       </fieldset>
 
-      <fieldset>
+
+<fieldset>
         <legend class="mb-3">
           SMTP Settings
         </legend>
+        <div class="field-padded">
         <div class="mb-3">
           <label for="smtp_server" class="form-label">
             SMTP Server
@@ -113,11 +108,46 @@
           </label>
           <input type="email" class="form-control" id="smtp_from" name="smtp_from" value="{{ config.smtp_from }}" placeholder="e.g., noreply@company.com">
         </div>
-        
+        </div>
       </fieldset>
+      
+    </div>
+    <div class="col-md-6">
+            <fieldset class="mb-4">
+        <legend class="mb-3">
+          Database Settings
+        </legend>
+        <div class="field-padded">
+        <div class="mb-3">
+          <label for="oracle_tns" class="form-label">
+            Oracle TNS
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="The Oracle TNS string for your database connection (e.g., tnsname or full connection string)">?</span>
+          </label>
+          <input type="text" class="form-control" id="oracle_tns" name="oracle_tns" value="{{ config.oracle_tns }}" placeholder="e.g., MYDB or server:1521/MYDB">
+        </div>
+        </div>
+      </fieldset>
+      <fieldset class="mb-4">
+        <legend class="mb-3">Actions</legend>
+        <div class="field-padded">
+          <div class="d-grid gap-2">
+            <a href="{{ url_for('updates.email_templates') }}" class="btn btn-outline-secondary">Email Templates</a>
+            <a href="{{ url_for('updates.updates') }}" class="btn btn-outline-secondary">Updates</a>
+            <hr class="my-1">
+            <a href="{{ url_for('updates.backup') }}" class="btn btn-primary">Backup Configuration</a>
+            <a href="{{ url_for('updates.restore') }}" class="btn btn-outline-primary">Restore Configuration</a>
+
+            <hr class="my-1">
+            <button type="button" id="restart-app" class="btn btn-warning">Restart App</button>
+            <button type="submit" name="reset_stats" value="1" class="btn btn-outline-danger w-100" onclick="return confirm('Reset all tracked app statistics?');">Reset Statistics</button>
+          </div>
+        </div>
+      </fieldset>
+
+      
     </div>
   </div>
-  <button type="submit" class="btn btn-primary">Save</button>
+  <button type="submit" class="btn btn-primary mt-3">Save</button>
 </form>
 
 <script>
@@ -140,6 +170,42 @@
     } catch (error) {
       console.error('Error opening folder picker:', error);
     }
+  });
+
+  document.getElementById('restart-app').addEventListener('click', async function() {
+    if (!confirm('Restart the application now?')) return;
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Restarting...';
+    try {
+      await fetch('{{ url_for("updates.restart") }}', { method: 'POST' });
+    } catch (_) {
+      // Expected: server killed the connection on os._exit(0) — restart was sent
+    }
+    // After the fetch (success or network error), server is restarting.
+    btn.textContent = 'Waiting for server...';
+    const checkUrl = '{{ url_for("main.index") }}';
+    // Wait 2s for server to fully shut down before polling
+    setTimeout(() => {
+      const checkInterval = setInterval(async () => {
+        try {
+          const r = await fetch(checkUrl, { cache: 'no-store' });
+          if (r.ok) {
+            clearInterval(checkInterval);
+            window.location.href = checkUrl;
+          }
+        } catch (_) {
+          // server still restarting
+        }
+      }, 1500);
+      // Give up after 60 seconds and restore button
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        btn.disabled = false;
+        btn.textContent = 'Restart App';
+        alert('Server did not respond within 60 seconds. Please refresh manually.');
+      }, 60000);
+    }, 2000);
   });
 </script>
 {% endblock %}

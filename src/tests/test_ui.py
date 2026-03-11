@@ -116,10 +116,54 @@ def test_settings_can_save_ui_port(client, app_workspace):
         general_path.write_text(original, encoding="utf-8")
 
 
+def test_settings_can_reset_stats(client, app_workspace):
+    _, base = app_workspace
+    stats_path = base / "config" / "stats.yaml"
+    stats_path.write_text(
+        yaml.safe_dump(
+            {
+                "total_run_requests": 10,
+                "total_reports_generated": 22,
+                "per_group_generation_counts": {"demo": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rv = client.post(
+        "/settings",
+        data={"reset_stats": "1"},
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+
+    cfg = yaml.safe_load(stats_path.read_text(encoding="utf-8")) or {}
+    assert cfg.get("total_run_requests") == 0
+    assert cfg.get("total_reports_generated") == 0
+    assert cfg.get("per_group_generation_counts") == {}
+
+
 def test_generate_page(client):
+    # Test dashboard page
     rv = client.get("/")
     assert rv.status_code == 200
-    assert b"Select Reports" in rv.data
+    assert b"Dashboard" in rv.data
+    assert b"Generate Reports" in rv.data
+    
+    # Test generate form page
+    rv = client.get("/generate")
+    assert rv.status_code == 200
+    assert b"Generate Reports" in rv.data
+    assert b"By Group" in rv.data
+    assert b"By Tag" in rv.data
+
+
+def test_dashboard_stats_api(client):
+    rv = client.get("/api/dashboard-stats")
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert "total_run_requests" in data
+    assert "per_group_generation_counts" in data
 
 
 def test_updates_page(client):
@@ -248,6 +292,10 @@ def test_query_builder_routes(client, monkeypatch):
     assert response.status_code == 200
     assert b"SQL Query Builder" in response.data
 
+    response = client.get("/tag/new")
+    assert response.status_code == 200
+    assert b"Create New Tag" in response.data
+
     response = client.get("/api/search-employees?q=test")
     assert response.status_code in [200, 500]
 
@@ -333,6 +381,30 @@ def test_group_new_hides_override_editor_by_default(client):
     assert rv.status_code == 200
     assert b"Edit SQL Manually (Override)" in rv.data
     assert b'id="override-panel" style="display: none;"' in rv.data
+
+
+def test_tag_edit_page_and_update(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "g_one")
+    _write_group(base, "g_two")
+
+    # Seed a tag on one group.
+    group_cfg = base / "groups" / "g_one" / "group.yaml"
+    cfg = yaml.safe_load(group_cfg.read_text(encoding="utf-8")) or {}
+    cfg["tags"] = ["demo_tag"]
+    group_cfg.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    rv = client.get("/tag/demo_tag/edit")
+    assert rv.status_code == 200
+    assert b"Edit Tag" in rv.data
+
+    rv = client.post(
+        "/tag/demo_tag/edit",
+        data={"tag_name": "demo_tag", "groups": ["g_one", "g_two"]},
+        follow_redirects=True,
+    )
+    assert rv.status_code == 200
+    assert b"Tags" in rv.data
 
 
 def test_find_available_port_chooses_fallback_when_preferred_in_use():

@@ -1,88 +1,207 @@
 {% extends "base.html" %}
 
-{% block title %}Generate Reports{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="container">
-  <h1>Select Reports to Generate</h1>
-  <form method="post">
-    <div class="row">
-      <div class="col-md-6">
-        <div class="card mb-3">
-          <div class="card-header">
-            <h5 class="mb-0">By Group</h5>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="select-all-groups">
-              <label class="form-check-label" for="select-all-groups">
-                Select All Groups
-              </label>
-            </div>
-          </div>
-          <div class="card-body">
-            {% for g in groups %}
-              <div class="form-check">
-                <input class="form-check-input group-checkbox" type="checkbox" name="groups" value="{{ g.handle }}" id="group-{{ g.handle }}">
-                <label class="form-check-label" for="group-{{ g.handle }}">
-                  {{ g.handle }} ({{ g.display_name }})
-                </label>
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-      </div>
-      <div class="col-md-6">
-        <div class="card mb-3">
-          <div class="card-header">
-            <h5 class="mb-0">By Tag</h5>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="select-all-tags">
-              <label class="form-check-label" for="select-all-tags">
-                Select All Tags
-              </label>
-            </div>
-          </div>
-          <div class="card-body">
-            {% for tag in tags %}
-              <div class="form-check">
-                <input class="form-check-input tag-checkbox" type="checkbox" name="tags" value="{{ tag }}" id="tag-{{ tag }}">
-                <label class="form-check-label" for="tag-{{ tag }}">
-                  {{ tag }}
-                </label>
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="card mb-3">
-      <div class="card-header">
-        <h5 class="mb-0">Email Options</h5>
-      </div>
-      <div class="card-body">
-        <div class="form-check mb-3">
-          <input class="form-check-input" type="checkbox" name="email" id="email">
-          <label class="form-check-label" for="email">
-            Email results
-          </label>
-        </div>
-        <div class="mb-3">
-          <label for="override_email" class="form-label">Override Address</label>
-          <input type="email" class="form-control" id="override_email" name="override_email">
-        </div>
-      </div>
-    </div>
-    <button type="submit" class="btn btn-primary">Start</button>
-  </form>
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="mb-1">Dashboard</h1>
+  </div>
+  <a href="{{ url_for('main.generate') }}" class="btn btn-primary btn-lg">
+    <i class="bi bi-play-fill"></i> Generate Reports
+  </a>
 </div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Reports Available</div>
+        <div class="display-6 fw-semibold">{{ metrics.available_reports_last_seen }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Total Reports Generated</div>
+        <div class="display-6 fw-semibold">{{ metrics.total_reports_generated }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Average Run Time</div>
+        <div class="display-6 fw-semibold">{{ '%.1f'|format(metrics.avg_runtime_seconds) }}s</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Most Generated Report</div>
+        <div class="fw-semibold fs-5">{{ metrics.most_generated_handle or 'N/A' }}</div>
+        <div class="text-muted small">{{ metrics.most_generated_count }} generations</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header"><h5 class="mb-0">Generation Distribution</h5></div>
+      <div class="card-body">
+        <canvas id="groupBarChart" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header"><h5 class="mb-0">Run Outcomes</h5></div>
+      <div class="card-body">
+        <canvas id="runHealthChart" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header"><h5 class="mb-0">Delivery Mode Totals</h5></div>
+      <div class="card-body">
+        <canvas id="deliveryModeChart" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header"><h5 class="mb-0">Top Tags by Usage</h5></div>
+      <div class="card-body">
+        <canvas id="tagUsageChart" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-document.getElementById('select-all-groups').addEventListener('change', function() {
-  const checkboxes = document.querySelectorAll('.group-checkbox');
-  checkboxes.forEach(cb => cb.checked = this.checked);
+const metrics = {{ metrics | tojson }};
+const groupMeta = {{ group_meta | tojson }};
+
+const groupData = metrics.per_group_generation_counts || {};
+const groupLabels = Object.keys(groupData);
+const groupCounts = Object.values(groupData);
+const barCtx = document.getElementById('groupBarChart');
+if (barCtx) {
+  new Chart(barCtx, {
+    type: 'bar',
+    data: {
+      labels: groupLabels.length ? groupLabels : ['No data yet'],
+      datasets: [{
+        label: 'Generations',
+        data: groupCounts.length ? groupCounts : [0],
+        backgroundColor: '#2f7a9a',
+        borderColor: '#0f4c81',
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+const runCtx = document.getElementById('runHealthChart');
+if (runCtx) {
+  new Chart(runCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Successful Runs', 'Failed Runs'],
+      datasets: [{
+        data: [
+          metrics.successful_runs || 0,
+          metrics.failed_runs || 0,
+        ],
+        backgroundColor: ['#2c9a71', '#d9534f'],
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+    }
+  });
+}
+
+const deliveryCtx = document.getElementById('deliveryModeChart');
+if (deliveryCtx) {
+  new Chart(deliveryCtx, {
+    type: 'bar',
+    data: {
+      labels: ['File Only', 'Group Recipient', 'Default Recipient', 'Override Recipient'],
+      datasets: [{
+        label: 'Reports',
+        data: [
+          metrics.reports_file_only_total || 0,
+          metrics.reports_email_group_total || 0,
+          metrics.reports_email_default_total || 0,
+          metrics.reports_email_override_total || 0,
+        ],
+        backgroundColor: ['#90a4ae', '#26a69a', '#66bb6a', '#ff7043'],
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+const tagUsage = {};
+const perGroup = metrics.per_group_generation_counts || {};
+groupMeta.forEach((g) => {
+  const runs = Number(perGroup[g.handle] || 0);
+  if (!runs || !Array.isArray(g.tags)) return;
+  g.tags.forEach((tag) => {
+    tagUsage[tag] = Number(tagUsage[tag] || 0) + runs;
+  });
 });
 
-document.getElementById('select-all-tags').addEventListener('change', function() {
-  const checkboxes = document.querySelectorAll('.tag-checkbox');
-  checkboxes.forEach(cb => cb.checked = this.checked);
-});
+const topTags = Object.entries(tagUsage)
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 8);
+
+const tagCtx = document.getElementById('tagUsageChart');
+if (tagCtx) {
+  new Chart(tagCtx, {
+    type: 'bar',
+    data: {
+      labels: topTags.length ? topTags.map(([name]) => name) : ['No tag data yet'],
+      datasets: [{
+        label: 'Runs',
+        data: topTags.length ? topTags.map(([, count]) => count) : [0],
+        backgroundColor: '#26a69a',
+        borderColor: '#00796b',
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
 </script>
 {% endblock %}

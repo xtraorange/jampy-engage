@@ -7,29 +7,141 @@
   <h1>Tags</h1>
   <a href="{{ url_for('tags.new_tag') }}" class="btn btn-primary">+ New Tag</a>
 </div>
-<div class="row">
+
+<div class="row mb-3 g-2">
+  <div class="col-md-8">
+    <input type="text" id="tagSearch" class="form-control" placeholder="Search tags by name...">
+  </div>
+  <div class="col-md-4">
+    <select id="tagSort" class="form-select">
+      <option value="name-asc">Name A → Z</option>
+      <option value="name-desc">Name Z → A</option>
+      <option value="count-desc">Most Groups First</option>
+      <option value="count-asc">Fewest Groups First</option>
+    </select>
+  </div>
+</div>
+
+<div id="noResults" class="alert alert-info" style="display: none;">No tags match your search.</div>
+
+<div class="row" id="tagGrid">
   {% for tag in tags %}
-    <div class="col-md-4 mb-3">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="card-title mb-0">{{ tag.name }}</h5>
-          <form method="post" action="{{ url_for('tags.delete_tag', tag=tag.name) }}" style="display: inline;" onsubmit="return confirm('Delete this tag from all groups? This action cannot be undone.');">
-            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-          </form>
+    <div class="col-md-6 col-lg-4 mb-3 tag-card-container" data-name="{{ tag.name | lower }}" data-count="{{ tag.groups | length }}">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="card-title mb-0 text-break">{{ tag.name }}</h5>
+          <small>{{ tag.groups | length }} group{{ 's' if tag.groups | length != 1 else '' }}</small>
         </div>
-        <div class="card-body">
-          <p class="card-text">Associated Groups:</p>
-          <ul class="list-group list-group-flush">
-            {% for group in tag.groups %}
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                {{ group.display_name or group.handle }}
-                <a href="{{ url_for('groups.edit_group', handle=group.handle) }}" class="btn btn-sm btn-outline-primary">Edit</a>
-              </li>
-            {% endfor %}
-          </ul>
+        <div class="card-body d-flex flex-column">
+          {% if tag.groups %}
+            <div style="max-height: 140px; overflow-y: auto;">
+              <ul class="list-group list-group-flush">
+                {% for group in tag.groups %}
+                  <li class="list-group-item py-1 px-0 border-0">
+                    <span class="small">{{ group.display_name or group.handle }}</span>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% else %}
+            <p class="text-muted small mb-0"><em>No groups with this tag</em></p>
+          {% endif %}
+        </div>
+        <div class="card-footer bg-light d-flex gap-2">
+          <a href="{{ url_for('tags.edit_tag', tag=tag.name) }}" class="btn btn-sm btn-outline-primary flex-grow-1">Edit</a>
+          <form method="post" action="{{ url_for('tags.delete_tag', tag=tag.name) }}" style="display: inline;" onsubmit="return confirm('Delete this tag from all groups? This action cannot be undone.');" class="flex-grow-1">
+            <button type="submit" class="btn btn-sm btn-outline-danger w-100">Delete</button>
+          </form>
         </div>
       </div>
     </div>
   {% endfor %}
 </div>
+
+<div id="paginationControls" class="d-flex justify-content-between align-items-center mt-3" hidden>
+  <button id="prevPage" class="btn btn-outline-secondary btn-sm">← Previous</button>
+  <span id="pageInfo" class="text-muted small"></span>
+  <button id="nextPage" class="btn btn-outline-secondary btn-sm">Next →</button>
+</div>
+
+<style>
+  .tag-card-container {
+    transition: opacity 0.2s ease-in-out;
+  }
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const PAGE_SIZE = 12;
+    let currentPage = 0;
+    let currentSort = 'name-asc';
+    let searchTerm = '';
+
+    const allCards = Array.from(document.querySelectorAll('.tag-card-container'));
+    const grid = document.getElementById('tagGrid');
+    const noResults = document.getElementById('noResults');
+    const paginationControls = document.getElementById('paginationControls');
+    const pageInfo = document.getElementById('pageInfo');
+    const prevBtn = document.getElementById('prevPage');
+    const nextBtn = document.getElementById('nextPage');
+
+    function getName(card) { return card.dataset.name || ''; }
+    function getCount(card) { return parseInt(card.dataset.count || '0', 10); }
+
+    function updateDisplay() {
+      const filtered = allCards.filter(card => {
+        if (!searchTerm) return true;
+        return getName(card).includes(searchTerm);
+      });
+
+      filtered.sort((a, b) => {
+        if (currentSort === 'name-asc')    return getName(a).localeCompare(getName(b));
+        if (currentSort === 'name-desc')   return getName(b).localeCompare(getName(a));
+        if (currentSort === 'count-desc')  return getCount(b) - getCount(a);
+        if (currentSort === 'count-asc')   return getCount(a) - getCount(b);
+        return 0;
+      });
+
+      allCards.forEach(c => c.style.display = 'none');
+
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      if (currentPage >= totalPages) currentPage = totalPages - 1;
+
+      filtered.forEach(card => grid.appendChild(card));
+
+      const start = currentPage * PAGE_SIZE;
+      filtered.forEach((card, i) => {
+        card.style.display = (i >= start && i < start + PAGE_SIZE) ? '' : 'none';
+      });
+
+      noResults.style.display = filtered.length === 0 ? 'block' : 'none';
+
+      if (filtered.length > PAGE_SIZE) {
+        paginationControls.hidden = false;
+        pageInfo.textContent = `Page ${currentPage + 1} of ${totalPages} (${filtered.length} tags)`;
+        prevBtn.disabled = currentPage === 0;
+        nextBtn.disabled = currentPage >= totalPages - 1;
+      } else {
+        paginationControls.hidden = true;
+      }
+    }
+
+    document.getElementById('tagSearch').addEventListener('input', function() {
+      searchTerm = this.value.toLowerCase().trim();
+      currentPage = 0;
+      updateDisplay();
+    });
+
+    document.getElementById('tagSort').addEventListener('change', function() {
+      currentSort = this.value;
+      currentPage = 0;
+      updateDisplay();
+    });
+
+    prevBtn.addEventListener('click', () => { currentPage--; updateDisplay(); });
+    nextBtn.addEventListener('click', () => { currentPage++; updateDisplay(); });
+
+    updateDisplay();
+  });
+</script>
 {% endblock %}

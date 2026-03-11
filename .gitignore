@@ -183,6 +183,7 @@ cython_debug/
 # Project local/private runtime files
 config/general.yaml
 config/email_template_override.yaml
+config/stats.yaml
 groups/*/
 output/
 restart.flag

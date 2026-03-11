@@ -54,7 +54,8 @@ The application is now ready to use!
 The web interface provides an easy-to-use dashboard for managing everything.
 
 ### Navigation
-- **Generate** - Select groups/tags and generate member lists with optional email delivery
+- **Dashboard** - View generation analytics and operational metrics
+- **Generate Reports** - Select groups and configure email options to generate reports
 - **App Settings** - Configure database, output directory, email settings, email templates
 - **Groups** - Create, edit, and delete groups with SQL queries
 - **Tags** - Manage tags and add new ones across multiple groups
@@ -112,15 +113,24 @@ Navigate to **Email Templates** to:
 - Use template variables like `{group_name}`, `{date}`, `{count}`, etc.
 - See available variables listed on the same page
 
-#### 5. Generate and Send Reports
-Navigate to **Generate** to:
-1. **Select groups** - Check individual groups or filter by tags
+#### 5. Dashboard - View Analytics
+Navigate to **Dashboard** (home page) to:
+1. **Review analytics** - Track total reports generated, average run duration, run health, and per-group generation trends
+2. **Use charts** - Visualize the most-used reports and overall run outcomes
+3. **View KPI cards** - See reports available, total generations, average runtime, and most-generated report
+4. **Launch report generation** - Click the "Generate Reports" button to proceed to the generation page
+
+The app tracks operational metrics in `config/stats.yaml`, including run requests, reports generated, run durations, most-generated report, and available report count.
+
+#### 5a. Generate Reports
+Navigate to **Generate Reports** to:
+1. **Select groups** - Choose individual groups or filter by tags
 2. **Choose email option**:
    - **No email** - Just generate CSV files
    - **Email to configured recipients** - Send each group's CSV to their configured recipient
    - **Email all to specific address** - Send all CSVs to one email address
-3. **Click Generate** - Reports will be generated and optionally emailed
-4. **Monitor progress** - Watch real-time status on the status page
+3. **Click Start** - Reports will be generated and optionally emailed
+4. **Monitor progress** - You'll be taken to the status page to watch real-time progress
 
 #### 6. Backup and Restore
 - **Backup** - Click "Backup" in the top navigation to download a zip file of all configurations
@@ -189,7 +199,8 @@ jampy-engage/
 │   │   ├── config_service.py    # Configuration management
 │   │   ├── group_service.py     # Group CRUD operations
 │   │   ├── report_service.py    # Report generation logic
-│   │   └── email_service.py     # Email sending functionality
+│   │   ├── email_service.py     # Email sending functionality
+│   │   └── stats_service.py     # Dashboard statistics tracking
 │   ├── ui/                      # Web interface package
 │   │   ├── __init__.py          # Flask app setup
 │   │   ├── utils.py             # UI utilities
@@ -246,10 +257,23 @@ For issues or feature requests, please visit the [GitHub repository](https://git
 - 🏷️ **Tag System** - Organize groups by tags and batch-generate
 - 📧 **Email Integration** - Support for SMTP and Outlook
 - 📁 **Batch Processing** - Parallel job execution for performance
+- 📊 **Dashboard Analytics** - KPI cards and charts for generation trends
 - 💾 **Backup/Restore** - Easy configuration backup and recovery
 - 🔄 **CLI Automation** - Use via cron jobs or task scheduler
 - 📈 **Real-time Progress** - Watch reports generate in real-time
 - 🔄 **Auto-Updates** - Built-in update checker with one-click updates
+- 🎨 **Material Design Theme** - Beautiful Material Design interface with smooth interactions
+- 🔍 **Advanced Search** - Search and filter groups and tags in real-time
+- 📄 **Dedicated Generate Page** - Separate page for report generation workflow
+
+## 💡 Additional Helpful Features
+
+- **Built-in Scheduling** - Create recurring runs from the UI without external schedulers
+- **Change Detection Reports** - Attach added/removed members compared to prior run
+- **Delivery Audit Log** - Keep history of every generation and email outcome
+- **Alerting Thresholds** - Notify when report counts change sharply
+- **Role-based Permissions** - Separate admin actions from run-only actions
+- **Dashboard Exports** - Download metrics snapshots as CSV/PDF
 
 ## 🔧 Version Management
 
@@ -269,11 +293,17 @@ repository_url: "https://github.com/xtraorange/jampy-engage"
 
 The update checker reads this file directly from GitHub, so changes are detected immediately without any caching delays or release marking requirements.
 
-
 TODO:
- - The override message box on group edit is still formatted where it has a lot of top padding or a couple extra lines before the actual message.  This just appears strange.
- - I think we could make the formatting for the parameters on the group edit page much nicer looking.  Instead of being inside a monospace box, lets just give it a UI element box (not a text box) and then use tags for each parameter like we do on the sql builder page.
- - Let's unify the look of the UI to be the same as the SQL Query Builder look... the boxes and headers within the top of the boxes, etc.  Obviously this will need to be adapted from page to page, it won't always make sense... but let's try for consistency in the look.  It looks nicer than any of the other pages.  Let's also use a unified color scheme (not the colors on the sql builder page) based on a popular simple color scheme (you pick, nothing outlandish).  I also wouldn't mind if we found a popular pre-themed dashboard for our css library (like the material dashboard) and used it's style.
- - Purely for fun, I'd like to track statistics on everything in the app and have our landing page be a dashboard with some nice graphs and such (using the template mentioned previously).  We should have a way to reset the stats so that when I'm done testing I can reset everything (probably on the settings page).  We should track generation times, reports generated, which report has the most generations, etc.  Please come up with some interesting things to track. Even just how many reports are available.
- - Please update the tests and the documentation, run the tests, and correct any issues.
- - Please suggest other features that might be helpful given the general purposes of this app!
+ - General settings: the actions box needs better theming in the buttons.  They just look like a bunch of random colors and styles, pretty inconsistent.  Backup and restore should look similar, restart app should be at the top, and their colors should mmake sense.  Also we go outline, outline, solid button, outline, solid button which just looks odd.
+ - Since the update page now has a link in settings, let's drop it from the top bar.
+ - Let's also add a link to e-mail templates in settings and drop that from the top bar.
+ - Lets put app settings last on the bar and rename it to just Settings.
+ - groups and tags should not be centered on their pages, it just looks weird.  Lets left align that text again.
+ - Lets make the display name the top of the groups instead of the handle.  Then let's add the handle in smaller text in the top header as well.
+ - Is there anything else we could display about the groups in the box so it doesn't appear so empty?
+ - Let's add pagination and sort order to groups and tags.
+ - The restart button in app settings indicated it wasn't able to send the restart signal, but the server still appeared to restart?
+ - In general settings, lets move email settings to the top left.
+ - Some pages have spacing under the header words, others don't.  They should all have it.  For example, Generate Reports has it, and App Settings doesn't.
+ - Most of the app now has appropriate padding in the boxes, but edit group does not.  All boxes throughout the app should use the same config with the same padding.
+ - The generate page is looking a little rough. Let's move the select all out of the headers of the by group and by tag boxes.  Also can we just make it look a little nicer over all, it just looks sort of messy.  Also lets add counts to the tags so we know how many will be generated from those.

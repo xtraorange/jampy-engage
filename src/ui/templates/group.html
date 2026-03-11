@@ -3,7 +3,10 @@
 {% block title %}Edit Group {{ group.handle }}{% endblock %}
 
 {% block content %}
-<h1>Edit Group: {{ group.handle }}</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1>Edit Group: {{ group.handle }}</h1>
+</div>
+
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 {% endif %}
@@ -12,6 +15,7 @@
     <div class="col-md-6">
       <fieldset class="mb-4">
         <legend class="mb-3">Basic Information</legend>
+        <div class="field-padded">
         <div class="mb-3">
           <label for="display_name" class="form-label">Display Name</label>
           <input type="text" class="form-control" id="display_name" name="display_name" value="{{ config.display_name }}">
@@ -20,10 +24,12 @@
           <label for="tags" class="form-label">Tags (comma-separated)</label>
           <input type="text" class="form-control" id="tags" name="tags" value="{{ config.tags_str }}">
         </div>
+        </div>
       </fieldset>
 
       <fieldset>
         <legend class="mb-3">Output Settings</legend>
+        <div class="field-padded">
         <div class="mb-3">
           <label for="email_recipient" class="form-label">Email Recipient</label>
           <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}">
@@ -36,17 +42,19 @@
           </div>
           <small class="form-text text-muted">Leave empty to use the global output directory</small>
         </div>
+        </div>
       </fieldset>
     </div>
     <div class="col-md-6">
       <fieldset>
         <legend class="mb-3">Query Configuration</legend>
+        <div class="field-padded">
         <input type="hidden" id="query_builder_json" name="query_builder_json" value='{{ config.query_builder_json | e }}'>
 
         <div id="builder-panel" {% if config.has_override_query %}style="display: none;"{% endif %}>
           <div class="mb-3">
             <label class="form-label">Builder Method and Parameters</label>
-            <pre id="builder-summary" class="form-control" style="min-height: 140px; white-space: pre-wrap;">No query builder parameters selected yet.</pre>
+            <div id="builder-summary" class="builder-summary-box">No query builder parameters selected yet.</div>
             <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-use-builder">
               🔨 Use Query Builder
             </button>
@@ -57,26 +65,25 @@
         </div>
 
         <div id="override-panel" {% if not config.has_override_query %}style="display: none;"{% endif %}>
-          <div class="alert alert-warning py-2 mb-2 mt-0 border-0">
-            Override SQL is active. This script is used at runtime until removed.
-          </div>
-
-          <div class="mb-2">
-            {% if config.has_override_query %}
-            <button
-              type="submit"
-              class="btn btn-sm btn-outline-danger"
-              formmethod="post"
-              formaction="{{ url_for('groups.remove_override', handle=group.handle) }}"
-              formnovalidate
-              onclick="return confirm('Remove custom SQL override and use saved builder parameters?');"
-            >
-              Remove Override SQL Script
-            </button>
-            {% endif %}
-            <button type="button" class="btn btn-sm btn-outline-secondary {% if config.has_override_query %}d-none{% endif %}" id="btn-cancel-override">
-              Back to Query Builder Parameters
-            </button>
+          <div class="alert alert-warning p-3 mb-3 mt-2">
+            <div class="fw-semibold mb-2">Override SQL is active. This script is used at runtime until removed.</div>
+            <div>
+              {% if config.has_override_query %}
+              <button
+                type="submit"
+                class="btn btn-sm btn-outline-danger"
+                formmethod="post"
+                formaction="{{ url_for('groups.remove_override', handle=group.handle) }}"
+                formnovalidate
+                onclick="return confirm('Remove custom SQL override and use saved builder parameters?');"
+              >
+                Remove Override SQL Script
+              </button>
+              {% endif %}
+              <button type="button" class="btn btn-sm btn-outline-secondary {% if config.has_override_query %}d-none{% endif %}" id="btn-cancel-override">
+                Back to Query Builder Parameters
+              </button>
+            </div>
           </div>
 
           <div class="mb-3">
@@ -85,6 +92,7 @@
             <small class="form-text text-muted">If provided, this override script is used instead of generated SQL.</small>
           </div>
         </div>
+        </div><!-- /.field-padded -->
       </fieldset>
     </div>
   </div>
@@ -94,77 +102,138 @@
   </div>
 </form>
 
+<style>
+  .builder-summary-box {
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: #f9fcff;
+    padding: 12px;
+    min-height: 140px;
+  }
+
+  .summary-section-title {
+    font-weight: 600;
+    color: var(--app-primary);
+    margin-bottom: 6px;
+  }
+
+  .summary-row {
+    margin-bottom: 10px;
+  }
+
+  .summary-label {
+    font-size: 0.9rem;
+    margin-right: 6px;
+    color: var(--app-muted);
+  }
+
+  .summary-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .summary-empty {
+    color: var(--app-muted);
+    font-style: italic;
+  }
+</style>
+
 <script>
   const draftKey = `group_edit_draft:${window.location.pathname}`;
   const hasSavedOverride = {{ 'true' if config.has_override_query else 'false' }};
 
-  function formatBuilderSummary(params) {
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function renderTag(value) {
+    return `<span class="badge badge-soft">${escapeHtml(value)}</span>`;
+  }
+
+  function renderRow(label, values) {
+    if (!Array.isArray(values) || values.length === 0) {
+      return '';
+    }
+    return `
+      <div class="summary-row">
+        <span class="summary-label">${escapeHtml(label)}:</span>
+        <span class="summary-tags">${values.map(renderTag).join('')}</span>
+      </div>
+    `;
+  }
+
+  function formatBuilderSummaryHtml(params) {
     if (!params || typeof params !== 'object') {
-      return 'No query builder parameters selected yet.';
+      return '<div class="summary-empty">No query builder parameters selected yet.</div>';
     }
 
     const mode = params.mode || 'by_person';
-    const lines = [];
-    lines.push('Population');
+    const populationRows = [];
+    const filterRows = [];
 
     if (mode === 'all_employees') {
-      lines.push('- All active employees');
+      populationRows.push(renderRow('Population', ['All active employees']));
     } else if (mode === 'by_role' || mode === 'by_attributes') {
-      lines.push('- Hierarchy by role attributes');
-      const roleDetails = [];
+      populationRows.push(renderRow('Population', ['Hierarchy by role attributes']));
       const jobDisplay = params.attributes_job_title_display
         || [params.attributes_job_code, params.attributes_job_title_text || params.attributes_job_title].filter(Boolean).join(' - ');
-      if (jobDisplay) roleDetails.push(`  Job Title/Code: ${jobDisplay}`);
-      if (params.attributes_bu_code) roleDetails.push(`  Business Unit: ${params.attributes_bu_code}`);
-      if (params.attributes_company) roleDetails.push(`  Company: ${params.attributes_company}`);
-      if (params.attributes_tree_branch) roleDetails.push(`  Tree Branch: ${params.attributes_tree_branch}`);
-      if (params.attributes_department_id) roleDetails.push(`  Department ID: ${params.attributes_department_id}`);
-      if (roleDetails.length === 0) {
-        roleDetails.push('  (no role attributes selected)');
+      if (jobDisplay) populationRows.push(renderRow('Role Job Title/Code', [jobDisplay]));
+      if (params.attributes_bu_code) populationRows.push(renderRow('Role Business Unit', [params.attributes_bu_code]));
+      if (params.attributes_company) populationRows.push(renderRow('Role Company', [params.attributes_company]));
+      if (params.attributes_tree_branch) populationRows.push(renderRow('Role Tree Branch', [params.attributes_tree_branch]));
+      if (params.attributes_department_id) populationRows.push(renderRow('Role Department ID', [params.attributes_department_id]));
+      if (populationRows.length === 1) {
+        populationRows.push('<div class="summary-empty">No role attributes selected.</div>');
       }
-      lines.push(...roleDetails);
     } else {
-      lines.push('- Hierarchy by person');
+      populationRows.push(renderRow('Population', ['Hierarchy by person']));
       const selected = Array.isArray(params.selected_person_details) ? params.selected_person_details : [];
       if (selected.length > 0) {
-        selected.forEach(p => {
+        const personTags = selected.map(p => {
           const parts = [
             [p.first_name, p.last_name].filter(Boolean).join(' ').trim(),
             p.username ? `(${p.username})` : '',
             p.id ? `[${p.id}]` : ''
           ].filter(Boolean);
-          lines.push(`  ${parts.join(' ')}`);
+          return parts.join(' ');
         });
+        populationRows.push(renderRow('Selected People', personTags));
       } else if (params.person_id || params.person_username) {
-        lines.push(`  ${params.person_username || ''} ${params.person_id ? `[${params.person_id}]` : ''}`.trim());
+        populationRows.push(renderRow('Selected People', [`${params.person_username || ''} ${params.person_id ? `[${params.person_id}]` : ''}`.trim()]));
       } else {
-        lines.push('  (no person selected)');
+        populationRows.push('<div class="summary-empty">No people selected.</div>');
       }
       if (params.exclude_root) {
-        lines.push('  Excluding selected root person(s) from output');
+        populationRows.push(renderRow('Options', ['Exclude selected root person(s) from output']));
       }
     }
 
-    lines.push('');
-    lines.push('Filters');
-    const filterRows = [];
     const filterJobs = Array.isArray(params.filter_job_titles_display) && params.filter_job_titles_display.length > 0
       ? params.filter_job_titles_display
       : (params.filter_job_titles || params.filter_job_codes || []);
-    if (Array.isArray(filterJobs) && filterJobs.length > 0) filterRows.push(`- Job Title/Code: ${filterJobs.join(', ')}`);
-    if (Array.isArray(params.filter_bu_codes) && params.filter_bu_codes.length > 0) filterRows.push(`- Business Unit: ${params.filter_bu_codes.join(', ')}`);
-    if (Array.isArray(params.filter_companies) && params.filter_companies.length > 0) filterRows.push(`- Company: ${params.filter_companies.join(', ')}`);
-    if (Array.isArray(params.filter_tree_branches) && params.filter_tree_branches.length > 0) filterRows.push(`- Tree Branch: ${params.filter_tree_branches.join(', ')}`);
-    if (Array.isArray(params.filter_department_ids) && params.filter_department_ids.length > 0) filterRows.push(`- Department ID: ${params.filter_department_ids.join(', ')}`);
-    if (params.filter_full_part_time) filterRows.push(`- Full/Part Time: ${params.filter_full_part_time}`);
+    if (Array.isArray(filterJobs) && filterJobs.length > 0) filterRows.push(renderRow('Job Title/Code', filterJobs));
+    if (Array.isArray(params.filter_bu_codes) && params.filter_bu_codes.length > 0) filterRows.push(renderRow('Business Unit', params.filter_bu_codes));
+    if (Array.isArray(params.filter_companies) && params.filter_companies.length > 0) filterRows.push(renderRow('Company', params.filter_companies));
+    if (Array.isArray(params.filter_tree_branches) && params.filter_tree_branches.length > 0) filterRows.push(renderRow('Tree Branch', params.filter_tree_branches));
+    if (Array.isArray(params.filter_department_ids) && params.filter_department_ids.length > 0) filterRows.push(renderRow('Department ID', params.filter_department_ids));
+    if (params.filter_full_part_time) filterRows.push(renderRow('Full/Part Time', [params.filter_full_part_time]));
 
-    if (filterRows.length === 0) {
-      lines.push('- None (all records from population)');
-    } else {
-      lines.push(...filterRows);
-    }
+    const filtersHtml = filterRows.length > 0
+      ? filterRows.join('')
+      : '<div class="summary-empty">No filters selected (all records from the chosen population).</div>';
 
-    return lines.join('\n');
+    return `
+      <div class="summary-section-title">Population</div>
+      ${populationRows.join('')}
+      <div class="summary-section-title mt-2">Filters</div>
+      ${filtersHtml}
+    `;
   }
 
   function setOverrideMode(enabled) {
@@ -211,7 +280,7 @@
     }
     try {
       const params = JSON.parse(raw);
-      summary.textContent = formatBuilderSummary(params);
+      summary.innerHTML = formatBuilderSummaryHtml(params);
     } catch (_) {
       summary.textContent = 'Unable to read builder parameters.';
     }

@@ -3,7 +3,11 @@
 {% block title %}SQL Query Builder{% endblock %}
 
 {% block content %}
-<h1 class="mb-3">SQL Query Builder</h1>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1>SQL Query Builder</h1>
+</div>
+
 <div id="db-error-banner" class="alert alert-danger" style="display: none;"></div>
 
 <div class="row">
@@ -248,12 +252,43 @@
       by_role: 'by-role-tab',
       all_employees: 'all-employees-tab'
     };
+    const paneMap = {
+      by_person: 'by-person',
+      by_role: 'by-role',
+      all_employees: 'all-employees'
+    };
     const tabId = tabMap[currentMode] || 'by-person-tab';
+    const paneId = paneMap[currentMode] || 'by-person';
     const tabButton = document.getElementById(tabId);
-    if (window.bootstrap && window.bootstrap.Tab && tabButton) {
-      window.bootstrap.Tab.getOrCreateInstance(tabButton).show();
-    } else if (tabButton) {
-      tabButton.click();
+    const paneElement = document.getElementById(paneId);
+    
+    if (!tabButton || !paneElement) return;
+    
+    // Remove active class and aria-selected from all tabs
+    document.querySelectorAll('.nav-tabs .nav-link').forEach(btn => {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-selected', 'false');
+    });
+    
+    // Remove active/show classes from all panes
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+      pane.classList.remove('show', 'active');
+    });
+    
+    // Add active class and aria-selected to correct tab
+    tabButton.classList.add('active');
+    tabButton.setAttribute('aria-selected', 'true');
+    
+    // Add active/show classes to correct pane
+    paneElement.classList.add('show', 'active');
+    
+    // Also try Bootstrap's Tab API if available
+    if (window.bootstrap && window.bootstrap.Tab) {
+      try {
+        window.bootstrap.Tab.getOrCreateInstance(tabButton).show();
+      } catch (_) {
+        // Ignore if Bootstrap Tab API fails
+      }
     }
   }
 

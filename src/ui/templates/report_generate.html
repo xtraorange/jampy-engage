@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Reports{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="mb-1">Generate Reports</h1>
+    <small class="text-muted">Select groups and configure email options to generate custom reports</small>
+  </div>
+</div>
+
+<form method="post">
+  <div class="row g-3 mb-3">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0">By Group</h5>
+        </div>
+        <div class="card-body">
+          <div class="mb-3 pb-2 border-bottom">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="select-all-groups">
+              <label class="form-check-label text-muted small fw-semibold" for="select-all-groups">Select All Groups</label>
+            </div>
+          </div>
+          {% if groups %}
+            {% for g in groups %}
+              <div class="form-check mb-1">
+                <input class="form-check-input group-checkbox" type="checkbox" name="groups" value="{{ g.handle }}" id="group-{{ g.handle }}">
+                <label class="form-check-label" for="group-{{ g.handle }}">
+                  {{ g.display_name or g.handle }}
+                  {% if g.display_name %}
+                    <span class="text-muted small">({{ g.handle }})</span>
+                  {% endif %}
+                </label>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted small"><em>No groups available. Create groups in the Groups section first.</em></p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="mb-0">By Tag</h5>
+        </div>
+        <div class="card-body">
+          <div class="mb-3 pb-2 border-bottom">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="select-all-tags">
+              <label class="form-check-label text-muted small fw-semibold" for="select-all-tags">Select All Tags</label>
+            </div>
+          </div>
+          {% if tags %}
+            {% for tag in tags %}
+              <div class="form-check mb-1">
+                <input class="form-check-input tag-checkbox" type="checkbox" name="tags" value="{{ tag }}" id="tag-{{ tag }}">
+                <label class="form-check-label" for="tag-{{ tag }}">
+                  {{ tag }}
+                  <span class="badge badge-soft-muted ms-1">{{ tag_counts.get(tag, 0) }} group{{ 's' if tag_counts.get(tag, 0) != 1 else '' }}</span>
+                </label>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted small"><em>No tags available. Add tags to groups first.</em></p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header">
+      <h5 class="mb-0">Email Options</h5>
+      <small>Configure how to deliver the generated reports</small>
+    </div>
+    <div class="card-body">
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="email" id="email">
+        <label class="form-check-label" for="email">
+          <strong>Email results</strong>
+          <small class="d-block text-muted mt-1">Send reports to configured recipients (or override address below)</small>
+        </label>
+      </div>
+      <div class="mb-0">
+        <label for="override_email" class="form-label">Override Email Address <small class="text-muted">(optional)</small></label>
+        <input type="email" class="form-control" id="override_email" name="override_email" placeholder="Leave blank to use group recipients">
+        <small class="form-text text-muted">If provided, all reports will be sent to this address instead of group recipients</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary btn-lg">
+      Start Generation
+    </button>
+    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary btn-lg">Cancel</a>
+  </div>
+</form>
+
+<script>
+document.getElementById('select-all-groups').addEventListener('change', function() {
+  document.querySelectorAll('.group-checkbox').forEach(cb => cb.checked = this.checked);
+});
+
+document.getElementById('select-all-tags').addEventListener('change', function() {
+  document.querySelectorAll('.tag-checkbox').forEach(cb => cb.checked = this.checked);
+});
+
+const emailCheckbox = document.getElementById('email');
+const overrideField = document.getElementById('override_email');
+
+function updateEmailFieldState() {
+  overrideField.disabled = !emailCheckbox.checked;
+}
+
+emailCheckbox.addEventListener('change', updateEmailFieldState);
+updateEmailFieldState();
+</script>
+{% endblock %}

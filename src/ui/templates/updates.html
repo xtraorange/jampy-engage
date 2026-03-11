@@ -3,50 +3,73 @@
 {% block title %}Application Updates{% endblock %}
 
 {% block content %}
-<h1>Application Updates</h1>
 
-{% if update_error %}
-<div class="alert alert-danger">Update error: {{ update_error }}</div>
-{% endif %}
 
-{% if updating %}
-<div class="alert alert-warning">Update in progress, functionality is temporarily disabled. Please wait and restart the app when it finishes.</div>
-{% endif %}
-
-<p>Current version: <strong>v{{ current_version }}</strong></p>
-
-{% if update_info and update_info.version %}
-  <p>Latest release: <strong>v{{ update_info.version }}</strong></p>
-  {% if update_info.last_check %}
-    <p class="text-muted small">Last checked: {{ update_info.last_check }}</p>
-  {% endif %}
-  {% if update_info.body %}
-    <details>
-      <summary>Release notes</summary>
-      <pre class="p-2" style="white-space: pre-wrap;">{{ update_info.body }}</pre>
-    </details>
-  {% endif %}
-{% endif %}
-
-{% if update_available and not updating %}
-<form method="post" onsubmit="return confirm('Updating will pull latest changes and may restart the application. Continue?');">
-  <button type="submit" class="btn btn-primary">Update now</button>
-</form>
-{% elif not update_available and update_info %}
-<p class="text-success">You are up to date.</p>
-{% endif %}
-
-{% if not updating %}
-<div class="mt-4">
-  <form method="post" action="{{ url_for('updates.force_update') }}" onsubmit="return confirm('Force update will pull latest changes regardless of version. Continue?');" style="display: inline;">
-    <button type="submit" class="btn btn-warning">Force update</button>
-  </form>
-  <a href="{{ url_for('updates.updates', check='true') }}" class="btn btn-outline-primary">Check again</a>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1>Application Updates</h1>
 </div>
-{% else %}
-<p class="mt-4">
-  <a href="{{ url_for('updates.updates', check='true') }}" class="btn btn-outline-primary">Check again</a>
-</p>
-{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header"><h5 class="mb-0">Version Status</h5></div>
+      <div class="card-body">
+        {% if update_error %}
+        <div class="alert alert-danger">Update error: {{ update_error }}</div>
+        {% endif %}
+
+        {% if updating %}
+        <div class="alert alert-warning">Update in progress, functionality is temporarily disabled. Please wait and restart the app when it finishes.</div>
+        {% endif %}
+
+        <p class="mb-2">Current version: <strong>v{{ current_version }}</strong></p>
+        {% if update_info and update_info.version %}
+          <p class="mb-2">Latest release: <strong>v{{ update_info.version }}</strong></p>
+          {% if update_info.last_check %}
+            <p class="text-muted small mb-0">Last checked: {{ update_info.last_check }}</p>
+          {% endif %}
+        {% endif %}
+
+        {% if not update_available and update_info %}
+        <p class="text-success mt-3 mb-0">You are up to date.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header"><h5 class="mb-0">Actions</h5></div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          {% if update_available and not updating %}
+          <form method="post" onsubmit="return confirm('Updating will pull latest changes and may restart the application. Continue?');">
+            <button type="submit" class="btn btn-primary w-100">Update Now</button>
+          </form>
+          {% endif %}
+
+          {% if not updating %}
+          <form method="post" action="{{ url_for('updates.force_update') }}" onsubmit="return confirm('Force update will pull latest changes regardless of version. Continue?');">
+            <button type="submit" class="btn btn-outline-danger w-100">Force Update</button>
+          </form>
+          {% endif %}
+
+          <a href="{{ url_for('updates.updates', check='true') }}" class="btn btn-outline-primary">Check Again</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if update_info and update_info.body %}
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header"><h5 class="mb-0">Release Notes</h5></div>
+      <div class="card-body">
+        <pre class="mb-0" style="white-space: pre-wrap;">{{ update_info.body }}</pre>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
 
 {% endblock %}
