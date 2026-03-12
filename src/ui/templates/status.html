@@ -30,12 +30,100 @@
       </ul>
     </div>
   </div>
-  <div class="mt-3">
+  <div class="mt-3 d-flex justify-content-end">
     <a href="{{ url_for('main.generate') }}" class="btn btn-secondary">Back to Generate</a>
   </div>
 </div>
 
+<!-- Report Modal -->
+<div class="modal fade" id="reportModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="reportModalTitle">Report</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="reportLoading" class="text-center">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+        <div id="reportContent" style="display: none; max-height: 500px; overflow-y: auto;">
+          <table class="table table-sm table-bordered">
+            <thead id="reportHeaders"></thead>
+            <tbody id="reportBody"></tbody>
+          </table>
+          <div class="mt-2">
+            <small class="text-muted">
+              Showing rows <span id="paginationInfo">0-0</span> of <span id="totalRows">0</span>
+            </small>
+            <div id="paginationControls" style="margin-top: 10px;"></div>
+          </div>
+        </div>
+        <div id="reportError" style="display: none;" class="alert alert-danger"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+const ROWS_PER_PAGE = 50;
+let currentReportData = null;
+let currentPage = 1;
+let reportModalInstance = null;
+
+function openReportModal() {
+  const modalEl = document.getElementById('reportModal');
+  if (!modalEl) return;
+
+  if (window.bootstrap && window.bootstrap.Modal) {
+    if (!reportModalInstance) {
+      reportModalInstance = new window.bootstrap.Modal(modalEl);
+    }
+    reportModalInstance.show();
+    return;
+  }
+
+  modalEl.style.display = 'block';
+  modalEl.classList.add('show');
+  modalEl.removeAttribute('aria-hidden');
+  modalEl.setAttribute('aria-modal', 'true');
+  document.body.classList.add('modal-open');
+
+  let backdrop = document.getElementById('reportModalFallbackBackdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.id = 'reportModalFallbackBackdrop';
+    backdrop.className = 'modal-backdrop fade show';
+    backdrop.addEventListener('click', closeReportModal);
+    document.body.appendChild(backdrop);
+  }
+}
+
+function closeReportModal() {
+  const modalEl = document.getElementById('reportModal');
+  if (!modalEl) return;
+
+  if (window.bootstrap && window.bootstrap.Modal && reportModalInstance) {
+    reportModalInstance.hide();
+    return;
+  }
+
+  modalEl.classList.remove('show');
+  modalEl.style.display = 'none';
+  modalEl.setAttribute('aria-hidden', 'true');
+  modalEl.removeAttribute('aria-modal');
+  document.body.classList.remove('modal-open');
+  const backdrop = document.getElementById('reportModalFallbackBackdrop');
+  if (backdrop) {
+    backdrop.remove();
+  }
+}
+
 function updateStatus() {
   fetch('/api/status')
     .then(response => response.json())
@@ -56,12 +144,26 @@ function updateStatus() {
         const li = document.createElement('li');
         li.className = 'list-group-item d-flex justify-content-between align-items-start';
         const compact = (status || '').length > 80 ? `${status.slice(0, 77)}...` : (status || 'pending');
+        
+        // Check if report is available
+        const hasReport = data.results && data.results[handle] && data.results[handle].csv_path;
+        const badge = String(status).startsWith('failed') ? 'danger' : (String(status).includes('written') ? 'success' : 'secondary');
+        const statusText = String(status).startsWith('failed') ? 'failed' : (String(status).includes('written') ? 'completed' : 'running');
+        
+        let viewButtonHtml = '';
+        if (hasReport && statusText === 'completed') {
+          viewButtonHtml = `<button class="btn btn-sm btn-primary" onclick="viewReport('${handle}')">View Report</button>`;
+        }
+        
         li.innerHTML = `
-          <div class="me-2" style="min-width: 0;">
+          <div class="me-2" style="min-width: 0; flex: 1;">
             <div><strong>${handle}</strong></div>
             <div class="text-muted small" title="${status || ''}">${compact}</div>
           </div>
-          <span class="badge bg-${String(status).startsWith('failed') ? 'danger' : (String(status).includes('written') ? 'success' : 'secondary')}">${String(status).startsWith('failed') ? 'failed' : (String(status).includes('written') ? 'completed' : 'running')}</span>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            ${viewButtonHtml}
+            <span class="badge bg-${badge}">${statusText}</span>
+          </div>
         `;
         groupStatus.appendChild(li);
       }
@@ -76,6 +178,118 @@ function updateStatus() {
     });
 }
 
+function viewReport(handle) {
+  currentPage = 1;
+  document.getElementById('reportModalTitle').textContent = `Report: ${handle}`;
+  document.getElementById('reportLoading').style.display = 'block';
+  document.getElementById('reportContent').style.display = 'none';
+  document.getElementById('reportError').style.display = 'none';
+  
+  fetch(`/api/view-report?handle=${encodeURIComponent(handle)}`)
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        document.getElementById('reportLoading').style.display = 'none';
+        document.getElementById('reportError').style.display = 'block';
+        document.getElementById('reportError').textContent = data.error;
+        return;
+      }
+      
+      currentReportData = data;
+      document.getElementById('totalRows').textContent = data.total_rows;
+      renderReportPage();
+      document.getElementById('reportLoading').style.display = 'none';
+      document.getElementById('reportContent').style.display = 'block';
+      openReportModal();
+    })
+    .catch(error => {
+      console.error('Error loading report:', error);
+      document.getElementById('reportLoading').style.display = 'none';
+      document.getElementById('reportError').style.display = 'block';
+      document.getElementById('reportError').textContent = 'Failed to load report';
+      openReportModal();
+    });
+}
+
+function renderReportPage() {
+  if (!currentReportData) return;
+  
+  const { headers, rows, total_rows } = currentReportData;
+  const startRow = (currentPage - 1) * ROWS_PER_PAGE;
+  const endRow = Math.min(startRow + ROWS_PER_PAGE, total_rows);
+  const pageRows = rows.slice(startRow, endRow);
+  
+  // Render headers
+  const headerRow = document.createElement('tr');
+  headers.forEach(header => {
+    const th = document.createElement('th');
+    th.textContent = header;
+    headerRow.appendChild(th);
+  });
+  document.getElementById('reportHeaders').innerHTML = '';
+  document.getElementById('reportHeaders').appendChild(headerRow);
+  
+  // Render rows
+  const tbody = document.getElementById('reportBody');
+  tbody.innerHTML = '';
+  pageRows.forEach(row => {
+    const tr = document.createElement('tr');
+    row.forEach(cell => {
+      const td = document.createElement('td');
+      td.textContent = cell || '';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  
+  // Update pagination info
+  document.getElementById('paginationInfo').textContent = `${startRow + 1}-${endRow}`;
+  
+  // Render pagination controls
+  const totalPages = Math.ceil(total_rows / ROWS_PER_PAGE);
+  const paginationHtml = [];
+  
+  if (currentPage > 1) {
+    paginationHtml.push(`<button class="btn btn-sm btn-outline-secondary" onclick="goToPage(1)">First</button>`);
+    paginationHtml.push(`<button class="btn btn-sm btn-outline-secondary" onclick="goToPage(${currentPage - 1})">Previous</button>`);
+  }
+  
+  paginationHtml.push(`<span class="mx-2">Page ${currentPage} of ${totalPages}</span>`);
+  
+  if (currentPage < totalPages) {
+    paginationHtml.push(`<button class="btn btn-sm btn-outline-secondary" onclick="goToPage(${currentPage + 1})">Next</button>`);
+    paginationHtml.push(`<button class="btn btn-sm btn-outline-secondary" onclick="goToPage(${totalPages})">Last</button>`);
+  }
+  
+  document.getElementById('paginationControls').innerHTML = paginationHtml.join(' ');
+}
+
+function goToPage(page) {
+  if (!currentReportData) return;
+  const totalPages = Math.ceil(currentReportData.total_rows / ROWS_PER_PAGE);
+  if (page >= 1 && page <= totalPages) {
+    currentPage = page;
+    renderReportPage();
+    // Scroll to top of table
+    document.querySelector('#reportModal .modal-body').scrollTop = 0;
+  }
+}
+
 updateStatus();
+
+document.addEventListener('DOMContentLoaded', () => {
+  const reportModal = document.getElementById('reportModal');
+  const closeButton = reportModal ? reportModal.querySelector('[data-bs-dismiss="modal"]') : null;
+  if (closeButton) {
+    closeButton.addEventListener('click', closeReportModal);
+  }
+  if (reportModal) {
+    reportModal.addEventListener('click', (event) => {
+      if (event.target === reportModal) {
+        closeReportModal();
+      }
+    });
+  }
+});
 </script>
 {% endblock %}

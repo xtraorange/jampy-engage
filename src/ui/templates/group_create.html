@@ -83,7 +83,7 @@
       </fieldset>
     </div>
   </div>
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 justify-content-end">
     <button type="submit" class="btn btn-primary">Create Group</button>
     <a href="{{ url_for('groups.groups') }}" class="btn btn-outline-secondary">Cancel</a>
   </div>
@@ -147,7 +147,7 @@
 </style>
 
 <script>
-  const draftKey = 'group_new_draft';
+  const draftKey = 'group_create_draft';
   let tagList = [];
 
   function escapeHtml(value) {
@@ -198,15 +198,24 @@
 
         if (type === 'hierarchy_by_person') {
           const people = Array.isArray(block.selected_person_details) ? block.selected_person_details : [];
-          details = people.length > 0
-            ? renderRow('People', people.map(p => `${[p.first_name, p.last_name].filter(Boolean).join(' ')} (${p.username || 'n/a'})`))
+          let personHtml = people.length > 0
+            ? renderRow('Hierarchy Root Members', people.map(p => `${[p.first_name, p.last_name].filter(Boolean).join(' ')} (${p.username || 'n/a'})`))  
             : '<div class="summary-empty">No people selected.</div>';
+          const options = [];
+          if (block.exclude_root) options.push('Exclude root person(s) from output');
+          if (block.direct_reports_only) options.push('Only direct reports');
+          const optionsHtml = options.length > 0 ? renderRow('Options', options) : '';
+          details = personHtml + optionsHtml;
         } else if (type === 'hierarchy_by_role') {
           const attrs = block.attributes || {};
           const attrValues = [attrs.job_title_display, attrs.bu_code, attrs.company, attrs.tree_branch, attrs.department_id].filter(Boolean);
-          details = attrValues.length > 0
-            ? renderRow('Attributes', attrValues)
+          let attrHtml = attrValues.length > 0
+            ? renderRow('Hierarchy Root Attributes', attrValues)
             : '<div class="summary-empty">No role attributes selected.</div>';
+          const options = [];
+          if (block.direct_reports_only) options.push('Only direct reports');
+          const optionsHtml = options.length > 0 ? renderRow('Options', options) : '';
+          details = attrHtml + optionsHtml;
         } else if (type === 'manual_individuals') {
           const people = Array.isArray(block.selected_person_details) ? block.selected_person_details : [];
           details = people.length > 0

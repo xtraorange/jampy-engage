@@ -284,7 +284,12 @@ def init_main_routes(app, base_path: str):
         if not tracker:
             return jsonify(error="No job running")
 
-        return jsonify(status=tracker.status, done=tracker.done, total=tracker.total)
+        return jsonify(
+            status=tracker.status,
+            done=tracker.done,
+            total=tracker.total,
+            results=tracker.results
+        )
 
     @main_bp.route("/settings", methods=["GET", "POST"])
     def settings():

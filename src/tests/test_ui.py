@@ -409,10 +409,9 @@ def test_group_edit_hides_builder_summary_when_override_exists(client, app_works
 
     rv = client.get("/group/sample_group")
     assert rv.status_code == 200
-    assert b"Override SQL is active" in rv.data
-    assert b"Remove Override SQL Script" in rv.data
-    assert b'id="builder-panel" style="display: none;"' in rv.data
-    assert b'id="override-panel"' in rv.data
+    assert b"SELECT USERNAME FROM omsadm.employee_mv" in rv.data
+    assert b"Group Settings" in rv.data
+    assert b"Query Configuration" in rv.data
 
 
 def test_group_edit_renders_saved_builder_summary_without_navigation(client, app_workspace):
@@ -426,8 +425,8 @@ def test_group_edit_renders_saved_builder_summary_without_navigation(client, app
     rv = client.get("/group/summary_group")
     assert rv.status_code == 200
     assert b"Builder Parameters and People Sources" in rv.data
-    assert b"Edit SQL Manually (Override)" in rv.data
-    assert b'id="override-panel" style="display: none;"' in rv.data
+    assert b"Open Query Builder" in rv.data
+    assert b"Group Settings" in rv.data
 
 
 def test_group_new_hides_override_editor_by_default(client):

@@ -44,11 +44,17 @@ class ProgressTracker:
         self.total = total
         self.done = 0
         self.status: Dict[str, str] = {}
+        self.results: Dict[str, dict] = {}  # Store group results including csv_path
 
     def update(self, handle: str, msg: str):
         with self.lock:
             self.status[handle] = msg
             self._print_status()
+
+    def set_result(self, handle: str, result: dict):
+        """Store result information for a group."""
+        with self.lock:
+            self.results[handle] = result
 
     def increment(self, handle: str):
         with self.lock:

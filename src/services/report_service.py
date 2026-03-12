@@ -68,11 +68,16 @@ class ReportService:
                     try:
                         result = future.result()
                         if result:
-                            group_run_details[result["handle"]] = {
+                            csv_path = result.get("csv_path")
+                            group_result = {
                                 "duration_seconds": result["duration_seconds"],
-                                "success": bool(result["csv_path"]),
+                                "success": bool(csv_path),
+                                "csv_path": csv_path,
                             }
-                        csv_path = result.get("csv_path") if result else None
+                            group_run_details[result["handle"]] = group_result
+                            # Store in tracker for UI access
+                            if tracker:
+                                tracker.set_result(result["handle"], group_result)
                         if csv_path:
                             csv_files.append(csv_path)
                             if progress_callback:

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Edit Group {{ group.handle }}{% endblock %}
+{% block title %}{{ config.display_name or group.display_name or group.handle }}{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
-    <h1>Edit Group: {{ config.display_name or group.display_name or group.handle }}</h1>
+    <h1>{{ config.display_name or group.display_name or group.handle }}</h1>
     <div class="text-muted">Handle: {{ group.handle }}</div>
   </div>
 </div>
@@ -13,101 +13,190 @@
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 {% endif %}
-<form method="post" data-unsaved-guard="true">
+
+<!-- VIEW MODE -->
+<div id="view-mode-container" {% if edit_mode %}style="display: none;"{% endif %}>
   <div class="row">
+    <!-- LEFT: Group Settings (Read-Only) -->
     <div class="col-md-6">
-      <fieldset class="mb-4">
-        <legend class="mb-3">Basic Information</legend>
-        <div class="field-padded">
-        <div class="mb-3">
-          <label for="display_name" class="form-label">Display Name</label>
-          <input type="text" class="form-control" id="display_name" name="display_name" value="{{ config.display_name }}">
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">Group Settings</h5>
         </div>
-        <div class="mb-3">
-          <label for="tag_input" class="form-label">Tags</label>
-          <input type="hidden" id="tags" name="tags" value="{{ config.tags_str }}">
-          <div id="tag-chip-container" class="mb-2 d-flex flex-wrap gap-1"></div>
-          <input type="text" class="form-control" id="tag_input" placeholder="Search or add a tag...">
-          <div id="tag-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
-          <small class="form-text text-muted">Press Enter to add a new tag if no suggestion matches.</small>
-        </div>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend class="mb-3">Output Settings</legend>
-        <div class="field-padded">
-        <div class="mb-3">
-          <label for="email_recipient" class="form-label">Email Recipient</label>
-          <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}">
-        </div>
-        <div class="mb-3">
-          <label for="output_dir" class="form-label">Output Directory Override</label>
-          <div class="input-group">
-            <input type="text" class="form-control" id="output_dir" name="output_dir" value="{{ config.output_dir }}">
-            <button class="btn btn-outline-secondary" type="button" id="browse_output_dir">Browse...</button>
-          </div>
-          <small class="form-text text-muted">Leave empty to use the global output directory</small>
-        </div>
-        </div>
-      </fieldset>
-    </div>
-    <div class="col-md-6">
-      <fieldset>
-        <legend class="mb-3">Query Configuration</legend>
-        <div class="field-padded">
-        <input type="hidden" id="query_builder_json" name="query_builder_json" value='{{ config.query_builder_json | e }}'>
-
-        <div id="builder-panel" {% if config.has_override_query %}style="display: none;"{% endif %}>
+        <div class="card-body">
           <div class="mb-3">
-            <div class="summary-section-title">Builder Parameters and People Sources</div>
-            <div id="builder-summary" class="builder-summary-box">No query builder parameters selected yet.</div>
-            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-use-builder">
-              🔨 Use Query Builder
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-warning mt-2 ms-2" id="btn-enable-override">
-              Edit SQL Manually (Override)
-            </button>
+            <strong>Display Name:</strong>
+            <div class="text-muted" id="view-display-name">{{ config.display_name or group.display_name or group.handle }}</div>
           </div>
-        </div>
-
-        <div id="override-panel" {% if not config.has_override_query %}style="display: none;"{% endif %}>
-          <div class="alert alert-warning p-3 mb-3 mt-2">
-            <div class="fw-semibold mb-2">Override SQL is active. This script is used at runtime until removed.</div>
-            <div>
-              {% if config.has_override_query %}
-              <button
-                type="submit"
-                class="btn btn-sm btn-outline-danger"
-                formmethod="post"
-                formaction="{{ url_for('groups.remove_override', handle=group.handle) }}"
-                formnovalidate
-                onclick="return confirm('Remove custom SQL override and use saved builder parameters?');"
-              >
-                Remove Override SQL Script
-              </button>
+          <div class="mb-3">
+            <strong>Tags:</strong>
+            <div id="view-tags">
+              {% if config.tags %}
+                <div>{% for tag in config.tags %}<span class="badge bg-secondary me-1">{{ tag }}</span>{% endfor %}</div>
+              {% else %}
+                <div class="text-muted">(No tags)</div>
               {% endif %}
-              <button type="button" class="btn btn-sm btn-outline-secondary {% if config.has_override_query %}d-none{% endif %}" id="btn-cancel-override">
-                Back to Query Builder Parameters
-              </button>
             </div>
           </div>
-
           <div class="mb-3">
-            <label for="query" class="form-label">Override SQL Script</label>
-            <textarea class="form-control font-monospace" id="query" name="query" rows="10" style="font-size: 0.9rem;" placeholder="Leave blank to use Query Builder parameters at report time.">{{ config.override_query }}</textarea>
-            <small class="form-text text-muted">If provided, this override script is used instead of generated SQL.</small>
+            <strong>Email Recipient:</strong>
+            <div class="text-muted" id="view-email-recipient">{{ config.email_recipient or "(Not set)" }}</div>
+          </div>
+          <div class="mb-3">
+            <strong>Output Directory Override:</strong>
+            <div class="text-muted" id="view-output-dir" style="word-break: break-word;">{{ config.output_dir or "(Using global directory)" }}</div>
+          </div>
+          <div class="d-flex justify-content-end">
+            <button type="button" class="btn btn-primary" onclick="switchToEditMode('settings')">Edit Settings</button>
           </div>
         </div>
-        </div><!-- /.field-padded -->
-      </fieldset>
+      </div>
+    </div>
+
+    <!-- RIGHT: Query Configuration -->
+    <div class="col-md-6">
+      <div class="card mb-4">
+        <div class="card-header">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <h5 class="mb-0">Query Configuration</h5>
+            <div class="d-flex align-items-center gap-2">
+              <span class="small text-muted" id="current-query-mode-view"></span>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="toggle-query-mode-view" onclick="toggleQueryMode(true)"></button>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- Query Builder Mode (Read-Only) -->
+          <div id="query-builder-view" class="query-mode-display">
+            <div id="builder-summary" class="builder-summary-box mb-3">No query builder parameters selected yet.</div>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="editQueryBuilder()">
+              🔨 Open Query Builder
+            </button>
+          </div>
+
+          <!-- Manual SQL Mode -->
+          <div id="query-manual-view" class="query-mode-display" style="display: none;">
+            <div id="query-manual-view-content">
+              {% if config.has_override_query %}
+                <pre id="manual-sql-display" class="bg-light p-3 mb-3 font-monospace" style="border-radius: 4px; max-height: 300px; overflow-y: auto; font-size: 0.85rem;">{{ config.override_query }}</pre>
+                <button type="button" class="btn btn-sm btn-outline-warning" onclick="switchToManualEditMode()">
+                  Edit SQL
+                </button>
+              {% else %}
+                <p class="text-muted mb-3">No manual SQL query defined. Click below to create one.</p>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="switchToManualEditMode()">
+                  Create Manual SQL Query
+                </button>
+              {% endif %}
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mt-3">
+            <button type="button" class="btn btn-primary" onclick="switchToEditMode('query')">Edit Query</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="d-flex gap-2">
-    <button type="submit" class="btn btn-primary">Save</button>
-    <a href="{{ url_for('groups.groups') }}" class="btn btn-outline-secondary">Cancel</a>
+
+  <div class="mt-3 d-flex justify-content-end">
+    <a href="{{ url_for('groups.groups') }}" class="btn btn-outline-secondary">Back to Groups</a>
   </div>
-</form>
+</div>
+
+<!-- EDIT MODE -->
+<div id="edit-mode-container" {% if not edit_mode %}style="display: none;"{% endif %}>
+  <form method="post" data-unsaved-guard="true" id="group-edit-form">
+    <div class="row">
+      <!-- LEFT: Edit Group Settings -->
+      <div class="col-md-6" id="settings-edit-col">
+        <div class="card mb-4">
+          <div class="card-header">
+            <h5 class="mb-0">Group Settings</h5>
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label for="display_name" class="form-label">Display Name</label>
+              <input type="text" class="form-control" id="display_name" name="display_name" value="{{ config.display_name }}">
+            </div>
+            <div class="mb-3">
+              <label for="tag_input" class="form-label">Tags</label>
+              <input type="hidden" id="tags" name="tags" value="{{ config.tags_str }}">
+              <div id="tag-chip-container" class="mb-2 d-flex flex-wrap gap-1"></div>
+              <input type="text" class="form-control" id="tag_input" placeholder="Search or add a tag...">
+              <div id="tag-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+              <small class="form-text text-muted">Press Enter to add a new tag if no suggestion matches.</small>
+            </div>
+            <div class="mb-3">
+              <label for="email_recipient" class="form-label">Email Recipient</label>
+              <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}">
+            </div>
+            <div class="mb-3">
+              <label for="output_dir" class="form-label">Output Directory Override</label>
+              <div class="input-group">
+                <input type="text" class="form-control" id="output_dir" name="output_dir" value="{{ config.output_dir }}">
+                <button class="btn btn-outline-secondary" type="button" id="browse_output_dir">Browse...</button>
+              </div>
+              <small class="form-text text-muted">Leave empty to use the global output directory</small>
+            </div>
+          </div>
+          <div class="card-footer d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-primary" id="save-settings-btn">Save Settings</button>
+            <button type="button" class="btn btn-outline-secondary" onclick="switchToViewMode()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Edit Query Configuration with Dual Modes -->
+      <div class="col-md-6" id="query-edit-col">
+        <div class="card mb-4">
+          <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <h5 class="mb-0">Query Configuration</h5>
+              <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted" id="current-query-mode-edit"></span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="toggle-query-mode-edit" onclick="toggleQueryMode(false)"></button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <input type="hidden" id="query_builder_json" name="query_builder_json" value='{{ config.query_builder_json | e }}'>
+            <input type="hidden" id="query_mode" name="query_mode" value="{{ config.query_mode }}">
+
+            <!-- Query Builder Edit Mode -->
+            <div id="query-builder-edit" class="query-mode-display">
+              <div class="mb-3">
+                <div class="summary-section-title">Builder Parameters and People Sources</div>
+                <div id="builder-summary-edit" class="builder-summary-box mb-3">No query builder parameters selected yet.</div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btn-use-builder">
+                  🔨 Open Query Builder
+                </button>
+              </div>
+            </div>
+
+            <!-- Manual SQL Edit Mode -->
+            <div id="query-manual-edit" class="query-mode-display" style="display: none;">
+              <div class="mb-3">
+                <label for="query" class="form-label">SQL Query</label>
+                <textarea class="form-control font-monospace" id="query" name="query" rows="12" style="font-size: 0.85rem;" placeholder="Enter SQL query here...">{{ config.override_query }}</textarea>
+                <small class="form-text text-muted" id="manual-sql-hint">
+                  {% if config.has_override_query %}
+                    This manual SQL will override the Query Builder at runtime.
+                  {% else %}
+                    Leave blank to use Query Builder parameters. Saving here will create a manual SQL override.
+                  {% endif %}
+                </small>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-primary" id="save-query-btn">Save Query</button>
+            <button type="button" class="btn btn-outline-secondary" onclick="switchToViewMode()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
 
 <style>
   .builder-summary-box {
@@ -158,13 +247,22 @@
   #tag-suggestions .list-group-item:hover {
     background-color: #e7f1ff;
   }
+
+  .section-passive {
+    opacity: 0.7;
+  }
 </style>
 
 <script>
   const draftKey = `group_edit_draft:${window.location.pathname}`;
   const hasSavedOverride = {{ 'true' if config.has_override_query else 'false' }};
   const allTags = {{ all_tags | tojson }};
+  const initialQueryMode = {{ config.query_mode | tojson }};
+  const initialDisplayName = {{ (group.display_name or group.handle) | tojson }};
   let tagList = [];
+  let currentQueryMode = (initialQueryMode === 'manual' || initialQueryMode === 'builder') ? initialQueryMode : (hasSavedOverride ? 'manual' : 'builder');
+  let currentEditMode = {{ 'true' if edit_mode else 'false' }};
+  let activeEditSection = 'settings';
 
   function escapeHtml(value) {
     return String(value)
@@ -214,15 +312,24 @@
 
         if (type === 'hierarchy_by_person') {
           const people = Array.isArray(block.selected_person_details) ? block.selected_person_details : [];
-          details = people.length > 0
-            ? renderRow('Hierarchy Root Members', people.map(p => `${[p.first_name, p.last_name].filter(Boolean).join(' ')} (${p.username || 'n/a'})`))
+          let personHtml = people.length > 0
+            ? renderRow('Hierarchy Root Members', people.map(p => `${[p.first_name, p.last_name].filter(Boolean).join(' ')} (${p.username || 'n/a'})`))  
             : '<div class="summary-empty">No people selected.</div>';
+          const options = [];
+          if (block.exclude_root) options.push('Exclude root person(s) from output');
+          if (block.direct_reports_only) options.push('Only direct reports');
+          const optionsHtml = options.length > 0 ? renderRow('Options', options) : '';
+          details = personHtml + optionsHtml;
         } else if (type === 'hierarchy_by_role') {
           const attrs = block.attributes || {};
           const attrValues = [attrs.job_title_display, attrs.bu_code, attrs.company, attrs.tree_branch, attrs.department_id].filter(Boolean);
-          details = attrValues.length > 0
+          let attrHtml = attrValues.length > 0
             ? renderRow('Hierarchy Root Attributes', attrValues)
             : '<div class="summary-empty">No role attributes selected.</div>';
+          const options = [];
+          if (block.direct_reports_only) options.push('Only direct reports');
+          const optionsHtml = options.length > 0 ? renderRow('Options', options) : '';
+          details = attrHtml + optionsHtml;
         } else if (type === 'manual_individuals') {
           const people = Array.isArray(block.selected_person_details) ? block.selected_person_details : [];
           details = people.length > 0
@@ -257,105 +364,263 @@
       return blocksHtml;
     }
 
-    const mode = params.mode || 'by_person';
-    const populationRows = [];
-    const filterRows = [];
-
-    if (mode === 'all_employees') {
-      populationRows.push(renderRow('Population', ['All active employees']));
-    } else if (mode === 'by_role' || mode === 'by_attributes') {
-      populationRows.push(renderRow('Population', ['Hierarchy by role attributes']));
-      const jobDisplay = params.attributes_job_title_display
-        || [params.attributes_job_code, params.attributes_job_title_text || params.attributes_job_title].filter(Boolean).join(' - ');
-      if (jobDisplay) populationRows.push(renderRow('Role Job Title/Code', [jobDisplay]));
-      if (params.attributes_bu_code) populationRows.push(renderRow('Role Business Unit', [params.attributes_bu_code]));
-      if (params.attributes_company) populationRows.push(renderRow('Role Company', [params.attributes_company]));
-      if (params.attributes_tree_branch) populationRows.push(renderRow('Role Tree Branch', [params.attributes_tree_branch]));
-      if (params.attributes_department_id) populationRows.push(renderRow('Role Department ID', [params.attributes_department_id]));
-      if (params.direct_reports_only) populationRows.push(renderRow('Options', ['Only direct reports']));
-      if (populationRows.length === 1) {
-        populationRows.push('<div class="summary-empty">No role attributes selected.</div>');
-      }
-    } else {
-      populationRows.push(renderRow('Population', ['Hierarchy by person']));
-      const selected = Array.isArray(params.selected_person_details) ? params.selected_person_details : [];
-      if (selected.length > 0) {
-        const personTags = selected.map(p => {
-          const parts = [
-            [p.first_name, p.last_name].filter(Boolean).join(' ').trim(),
-            p.username ? `(${p.username})` : '',
-            p.id ? `[${p.id}]` : ''
-          ].filter(Boolean);
-          return parts.join(' ');
-        });
-        populationRows.push(renderRow('Selected People', personTags));
-      } else if (params.person_id || params.person_username) {
-        populationRows.push(renderRow('Selected People', [`${params.person_username || ''} ${params.person_id ? `[${params.person_id}]` : ''}`.trim()]));
-      } else {
-        populationRows.push('<div class="summary-empty">No people selected.</div>');
-      }
-      if (params.exclude_root) {
-        populationRows.push(renderRow('Options', ['Exclude selected root person(s) from output']));
-      }
-      if (params.direct_reports_only) {
-        populationRows.push(renderRow('Options', ['Only direct reports']));
-      }
-    }
-
-    const additions = Array.isArray(params.additional_person_details) ? params.additional_person_details : [];
-    if (additions.length > 0) {
-      const additionTags = additions.map(p => {
-        const parts = [
-          [p.first_name, p.last_name].filter(Boolean).join(' ').trim(),
-          p.username ? `(${p.username})` : '',
-          p.id ? `[${p.id}]` : ''
-        ].filter(Boolean);
-        return parts.join(' ');
-      });
-      populationRows.push(renderRow('Manual Additions', additionTags));
-    }
-
-    const filterJobs = Array.isArray(params.filter_job_titles_display) && params.filter_job_titles_display.length > 0
-      ? params.filter_job_titles_display
-      : (params.filter_job_titles || params.filter_job_codes || []);
-    if (Array.isArray(filterJobs) && filterJobs.length > 0) filterRows.push(renderRow('Job Title/Code', filterJobs));
-    if (Array.isArray(params.filter_bu_codes) && params.filter_bu_codes.length > 0) filterRows.push(renderRow('Business Unit', params.filter_bu_codes));
-    if (Array.isArray(params.filter_companies) && params.filter_companies.length > 0) filterRows.push(renderRow('Company', params.filter_companies));
-    if (Array.isArray(params.filter_tree_branches) && params.filter_tree_branches.length > 0) filterRows.push(renderRow('Tree Branch', params.filter_tree_branches));
-    if (Array.isArray(params.filter_department_ids) && params.filter_department_ids.length > 0) filterRows.push(renderRow('Department ID', params.filter_department_ids));
-    if (params.filter_full_part_time) filterRows.push(renderRow('Full/Part Time', [params.filter_full_part_time]));
-
-    const filtersHtml = filterRows.length > 0
-      ? filterRows.join('')
-      : '<div class="summary-empty">No filters selected (all records from the chosen population).</div>';
-
-    return `
-      <div class="summary-section-title">Population</div>
-      ${populationRows.join('')}
-      <div class="summary-section-title mt-2">Filters</div>
-      ${filtersHtml}
-    `;
+    return '<div class="summary-empty">No query builder parameters selected yet.</div>';
   }
 
-  function setOverrideMode(enabled) {
-    const builderPanel = document.getElementById('builder-panel');
-    const overridePanel = document.getElementById('override-panel');
-    const cancelOverrideBtn = document.getElementById('btn-cancel-override');
-    const queryInput = document.getElementById('query');
+  function switchViewMode(isViewMode) {
+    const viewContainer = document.getElementById('view-mode-container');
+    const editContainer = document.getElementById('edit-mode-container');
+    
+    if (isViewMode) {
+      viewContainer.style.display = '';
+      editContainer.style.display = 'none';
+      currentEditMode = false;
+    } else {
+      viewContainer.style.display = 'none';
+      editContainer.style.display = '';
+      currentEditMode = true;
+      tagList = parseTags(document.getElementById('tags').value);
+      renderTagChips();
+    }
+  }
 
-    if (enabled) {
-      builderPanel.style.display = 'none';
-      overridePanel.style.display = '';
-      if (cancelOverrideBtn && hasSavedOverride) {
-        cancelOverrideBtn.classList.add('d-none');
+  function setActiveEditSection(section) {
+    activeEditSection = section === 'query' ? 'query' : 'settings';
+    const settingsCol = document.getElementById('settings-edit-col');
+    const queryCol = document.getElementById('query-edit-col');
+    if (!settingsCol || !queryCol) return;
+
+    if (activeEditSection === 'settings') {
+      settingsCol.classList.remove('section-passive');
+      queryCol.classList.add('section-passive');
+      settingsCol.querySelectorAll('input, textarea, button, select').forEach((el) => {
+        el.disabled = false;
+      });
+      queryCol.querySelectorAll('input, textarea, button, select').forEach((el) => {
+        el.disabled = true;
+      });
+    } else {
+      queryCol.classList.remove('section-passive');
+      settingsCol.classList.add('section-passive');
+      queryCol.querySelectorAll('input, textarea, button, select').forEach((el) => {
+        el.disabled = false;
+      });
+      settingsCol.querySelectorAll('input, textarea, button, select').forEach((el) => {
+        el.disabled = true;
+      });
+    }
+  }
+
+  function switchToEditMode(section = 'settings') {
+    switchViewMode(false);
+    setActiveEditSection(section);
+  }
+
+  function switchToViewMode() {
+    updateViewModeValues();
+    switchViewMode(true);
+  }
+
+  function switchToManualEditMode() {
+    switchViewMode(false);
+    setActiveEditSection('query');
+    switchQueryMode('manual', false);
+  }
+
+  function renderQueryModeToggle(isViewMode) {
+    const labelEl = document.getElementById(isViewMode ? 'current-query-mode-view' : 'current-query-mode-edit');
+    const buttonEl = document.getElementById(isViewMode ? 'toggle-query-mode-view' : 'toggle-query-mode-edit');
+    if (!labelEl || !buttonEl) return;
+    const currentLabel = currentQueryMode === 'manual' ? 'Manual SQL' : 'Query Builder';
+    const targetLabel = currentQueryMode === 'manual' ? 'Query Builder' : 'Manual SQL';
+    labelEl.textContent = `Current: ${currentLabel}`;
+    buttonEl.textContent = `Switch to ${targetLabel}`;
+  }
+
+  function toggleQueryMode(isViewMode) {
+    const nextMode = currentQueryMode === 'manual' ? 'builder' : 'manual';
+    switchQueryMode(nextMode, isViewMode, true);
+  }
+
+  function switchQueryMode(mode, isViewMode, persistMode = true) {
+    currentQueryMode = mode;
+    const modeField = document.getElementById('query_mode');
+    if (modeField) {
+      modeField.value = mode;
+    }
+    
+    if (isViewMode) {
+      const builderView = document.getElementById('query-builder-view');
+      const manualView = document.getElementById('query-manual-view');
+      
+      if (mode === 'builder') {
+        builderView.style.display = '';
+        manualView.style.display = 'none';
+      } else {
+        builderView.style.display = 'none';
+        manualView.style.display = '';
       }
     } else {
-      if (!hasSavedOverride) {
-        queryInput.value = '';
+      const builderEdit = document.getElementById('query-builder-edit');
+      const manualEdit = document.getElementById('query-manual-edit');
+      
+      if (mode === 'builder') {
+        builderEdit.style.display = '';
+        manualEdit.style.display = 'none';
+      } else {
+        builderEdit.style.display = 'none';
+        manualEdit.style.display = '';
       }
-      builderPanel.style.display = '';
-      overridePanel.style.display = 'none';
     }
+
+    renderQueryModeToggle(true);
+    renderQueryModeToggle(false);
+
+    if (persistMode) {
+      persistQueryModeSelection(mode);
+    }
+  }
+
+  function persistQueryModeSelection(mode) {
+    const payload = new URLSearchParams();
+    payload.set('save_scope', 'query_mode');
+    payload.set('query_mode', mode);
+
+    fetch(window.location.pathname, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: payload.toString(),
+    }).catch(() => {
+      // Keep UX responsive even if mode persistence fails.
+    });
+  }
+
+  function getFormDataWithScope(scope) {
+    const form = document.getElementById('group-edit-form');
+    const payload = new FormData(form);
+    payload.set('save_scope', scope);
+    payload.set('query_mode', currentQueryMode);
+    return payload;
+  }
+
+  function updateViewModeValues() {
+    const displayNameInput = document.getElementById('display_name');
+    const viewDisplayName = document.getElementById('view-display-name');
+    const viewEmail = document.getElementById('view-email-recipient');
+    const emailInput = document.getElementById('email_recipient');
+    const outputInput = document.getElementById('output_dir');
+    const viewOutput = document.getElementById('view-output-dir');
+    const viewTags = document.getElementById('view-tags');
+
+    if (viewDisplayName && displayNameInput) {
+      const displayName = (displayNameInput.value || '').trim();
+      viewDisplayName.textContent = displayName || initialDisplayName;
+    }
+
+    if (viewEmail && emailInput) {
+      const email = (emailInput.value || '').trim();
+      viewEmail.textContent = email || '(Not set)';
+    }
+
+    if (viewOutput && outputInput) {
+      const outputDir = (outputInput.value || '').trim();
+      viewOutput.textContent = outputDir || '(Using global directory)';
+    }
+
+    if (viewTags) {
+      if (tagList.length === 0) {
+        viewTags.innerHTML = '<div class="text-muted">(No tags)</div>';
+      } else {
+        viewTags.innerHTML = `<div>${tagList.map(tag => `<span class="badge bg-secondary me-1">${escapeHtml(tag)}</span>`).join('')}</div>`;
+      }
+    }
+  }
+
+  function applyServerConfig(config) {
+    if (!config || typeof config !== 'object') return;
+    if (typeof config.display_name === 'string') {
+      document.getElementById('display_name').value = config.display_name;
+    }
+    if (Array.isArray(config.tags)) {
+      tagList = config.tags.slice();
+      renderTagChips();
+    }
+    if (typeof config.email_recipient === 'string') {
+      document.getElementById('email_recipient').value = config.email_recipient;
+    } else {
+      document.getElementById('email_recipient').value = '';
+    }
+    if (typeof config.output_dir === 'string') {
+      document.getElementById('output_dir').value = config.output_dir;
+    } else {
+      document.getElementById('output_dir').value = '';
+    }
+    if (typeof config.override_query === 'string') {
+      document.getElementById('query').value = config.override_query;
+      const manualViewContent = document.getElementById('query-manual-view-content');
+      if (manualViewContent) {
+        if (config.override_query.trim()) {
+          manualViewContent.innerHTML = `
+            <pre id="manual-sql-display" class="bg-light p-3 mb-3 font-monospace" style="border-radius: 4px; max-height: 300px; overflow-y: auto; font-size: 0.85rem;">${escapeHtml(config.override_query)}</pre>
+            <button type="button" class="btn btn-sm btn-outline-warning" onclick="switchToManualEditMode()">Edit SQL</button>
+          `;
+        } else {
+          manualViewContent.innerHTML = `
+            <p class="text-muted mb-3">No manual SQL query defined. Click below to create one.</p>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="switchToManualEditMode()">Create Manual SQL Query</button>
+          `;
+        }
+      }
+    }
+    if (typeof config.query_builder_json === 'string') {
+      document.getElementById('query_builder_json').value = config.query_builder_json;
+      updateBuilderSummary();
+    }
+    const mode = config.query_mode === 'manual' ? 'manual' : 'builder';
+    currentQueryMode = mode;
+    switchQueryMode(mode, true, false);
+    switchQueryMode(mode, false, false);
+    setActiveEditSection(activeEditSection);
+    updateViewModeValues();
+  }
+
+  async function saveSection(scope) {
+    const payload = getFormDataWithScope(scope);
+    const response = await fetch(window.location.pathname, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: payload,
+    });
+
+    const data = await response.json();
+    if (!response.ok || data.ok === false) {
+      alert(data.error || 'Unable to save changes.');
+      return;
+    }
+
+    applyServerConfig(data.config || {});
+    sessionStorage.removeItem(draftKey);
+    const form = document.getElementById('group-edit-form');
+    if (form) {
+      form.dataset.isDirty = 'false';
+    }
+    switchToViewMode();
+  }
+
+  function editQueryBuilder() {
+    const form = document.getElementById('group-edit-form');
+    if (form) {
+      form.dataset.isDirty = 'false';
+    }
+    sessionStorage.setItem(draftKey, JSON.stringify(collectDraft()));
+    sessionStorage.setItem('query_builder_initial_params', document.getElementById('query_builder_json').value || '{}');
+    sessionStorage.setItem('return_to', window.location.pathname);
+    window.location.href = '/query-builder';
   }
 
   function parseTags(value) {
@@ -372,7 +637,7 @@
   function renderTagChips() {
     const container = document.getElementById('tag-chip-container');
     container.innerHTML = tagList.map((tag, index) => (
-      `<span class="badge bg-primary d-inline-flex align-items-center gap-1">${escapeHtml(tag)}<button type="button" class="btn-close btn-close-white" aria-label="Remove" data-tag-index="${index}"></button></span>`
+      `<span class="badge bg-primary d-inline-flex align-items-center gap-1">${escapeHtml(tag)}<button type="button" class="btn-close btn-close-white" aria-label="Remove" data-tag-index="${index}" onclick="removeTag(${index}); return false;"></button></span>`
     )).join('');
     syncTagsField();
   }
@@ -384,6 +649,13 @@
     if (exists) return;
     tagList.push(tag);
     renderTagChips();
+  }
+
+  function removeTag(index) {
+    if (index >= 0 && index < tagList.length) {
+      tagList.splice(index, 1);
+      renderTagChips();
+    }
   }
 
   function updateTagSuggestions(query) {
@@ -435,21 +707,28 @@
   }
 
   function updateBuilderSummary() {
+    const summaries = [
+      { id: 'builder-summary' },
+      { id: 'builder-summary-edit' }
+    ];
+
     const raw = document.getElementById('query_builder_json').value;
-    const summary = document.getElementById('builder-summary');
-    if (!summary) {
-      return;
-    }
-    if (!raw || raw === '{}') {
-      summary.textContent = 'No query builder parameters selected yet.';
-      return;
-    }
-    try {
-      const params = JSON.parse(raw);
-      summary.innerHTML = formatBuilderSummaryHtml(params);
-    } catch (_) {
-      summary.textContent = 'Unable to read builder parameters.';
-    }
+    
+    summaries.forEach(({ id }) => {
+      const summary = document.getElementById(id);
+      if (!summary) return;
+      
+      if (!raw || raw === '{}') {
+        summary.textContent = 'No query builder parameters selected yet.';
+        return;
+      }
+      try {
+        const params = JSON.parse(raw);
+        summary.innerHTML = formatBuilderSummaryHtml(params);
+      } catch (_) {
+        summary.textContent = 'Unable to read builder parameters.';
+      }
+    });
   }
 
   function restoreDraft() {
@@ -466,98 +745,109 @@
       if (typeof draft.output_dir === 'string') document.getElementById('output_dir').value = draft.output_dir;
       if (typeof draft.query === 'string') document.getElementById('query').value = draft.query;
       if (typeof draft.query_builder_json === 'string') document.getElementById('query_builder_json').value = draft.query_builder_json;
-    } catch (_) {
-      // Ignore malformed session data.
-    }
+    } catch (_) {}
     updateBuilderSummary();
   }
 
-  document.getElementById('browse_output_dir').addEventListener('click', async function() {
-    try {
-      const response = await fetch('/api/pick-folder');
-      const data = await response.json();
-      if (data.path) {
-        document.getElementById('output_dir').value = data.path;
-      }
-    } catch (error) {
-      alert('Error opening folder picker: ' + error);
-    }
-  });
-
-  document.getElementById('btn-use-builder').addEventListener('click', (e) => {
-    e.preventDefault();
-    sessionStorage.setItem(draftKey, JSON.stringify(collectDraft()));
-    sessionStorage.setItem('query_builder_initial_params', document.getElementById('query_builder_json').value || '{}');
-    // Redirect to query builder with return path
-    sessionStorage.setItem('return_to', window.location.pathname);
-    window.location.href = '/query-builder';
-  });
-
-  document.getElementById('btn-enable-override').addEventListener('click', (e) => {
-    e.preventDefault();
-    setOverrideMode(true);
-  });
-
-  const cancelOverrideBtn = document.getElementById('btn-cancel-override');
-  if (cancelOverrideBtn) {
-    cancelOverrideBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      setOverrideMode(false);
-    });
-  }
-
-  // Check if returning from query builder
   window.addEventListener('load', () => {
-    tagList = parseTags(document.getElementById('tags').value);
-    renderTagChips();
-
-    document.getElementById('tag_input').addEventListener('input', (event) => {
-      updateTagSuggestions(event.target.value);
-    });
-
-    document.getElementById('tag_input').addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
-      const input = event.target;
-      addTag(input.value);
-      input.value = '';
-      document.getElementById('tag-suggestions').style.display = 'none';
-    });
-
-    document.getElementById('tag_input').addEventListener('blur', () => {
-      setTimeout(() => {
-        document.getElementById('tag-suggestions').style.display = 'none';
-      }, 150);
-    });
-
-    document.getElementById('tag-chip-container').addEventListener('click', (event) => {
-      const button = event.target.closest('button[data-tag-index]');
-      if (!button) return;
-      const index = Number(button.getAttribute('data-tag-index'));
-      if (!Number.isInteger(index) || index < 0 || index >= tagList.length) return;
-      tagList.splice(index, 1);
+    if (currentEditMode) {
+      tagList = parseTags(document.getElementById('tags').value);
       renderTagChips();
-    });
+      setActiveEditSection('settings');
+    }
 
-    setOverrideMode(hasSavedOverride);
+    const tagInput = document.getElementById('tag_input');
+    if (tagInput) {
+      tagInput.addEventListener('input', (event) => {
+        updateTagSuggestions(event.target.value);
+      });
+
+      tagInput.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        addTag(tagInput.value);
+        tagInput.value = '';
+        document.getElementById('tag-suggestions').style.display = 'none';
+      });
+
+      tagInput.addEventListener('blur', () => {
+        setTimeout(() => {
+          document.getElementById('tag-suggestions').style.display = 'none';
+        }, 150);
+      });
+    }
+
+    const browseBtn = document.getElementById('browse_output_dir');
+    if (browseBtn) {
+      browseBtn.addEventListener('click', async function() {
+        try {
+          const response = await fetch('/api/pick-folder');
+          const data = await response.json();
+          if (data.path) {
+            document.getElementById('output_dir').value = data.path;
+          }
+        } catch (error) {
+          alert('Error opening folder picker: ' + error);
+        }
+      });
+    }
+
+    const builderBtn = document.getElementById('btn-use-builder');
+    if (builderBtn) {
+      builderBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        editQueryBuilder();
+      });
+    }
+
+    switchQueryMode(currentQueryMode, true, false);
+    switchQueryMode(currentQueryMode, false, false);
     restoreDraft();
     updateBuilderSummary();
+    
     const acceptedBuilderParams = sessionStorage.getItem('accepted_query_builder_params');
     if (acceptedBuilderParams) {
       document.getElementById('query_builder_json').value = acceptedBuilderParams;
       updateBuilderSummary();
       sessionStorage.removeItem('accepted_query_builder_params');
     }
+    
     const acceptedOverrideQuery = sessionStorage.getItem('accepted_query_sql');
     if (acceptedOverrideQuery) {
       document.getElementById('query').value = acceptedOverrideQuery;
-      setOverrideMode(true);
+      switchViewMode(false);
+      setActiveEditSection('query');
+      switchQueryMode('manual', false);
       sessionStorage.removeItem('accepted_query_sql');
     }
-  });
 
-  document.querySelector('form').addEventListener('submit', () => {
-    sessionStorage.removeItem(draftKey);
+    const form = document.getElementById('group-edit-form');
+    if (form) {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        saveSection('all');
+      });
+    }
+
+    const saveSettingsBtn = document.getElementById('save-settings-btn');
+    if (saveSettingsBtn) {
+      saveSettingsBtn.addEventListener('click', () => {
+        saveSection('settings');
+      });
+    }
+
+    const saveQueryBtn = document.getElementById('save-query-btn');
+    if (saveQueryBtn) {
+      saveQueryBtn.addEventListener('click', () => {
+        saveSection('query');
+      });
+    }
+
+    if (form) {
+      form.addEventListener('reset', () => {
+        sessionStorage.removeItem(draftKey);
+      });
+    }
   });
 </script>
 {% endblock %}

@@ -89,7 +89,8 @@ class GroupService:
         query: Optional[str] = None,
         query_builder: Optional[dict] = None,
         email_recipient: Optional[str] = None,
-        output_dir: Optional[str] = None
+        output_dir: Optional[str] = None,
+        query_mode: Optional[str] = None,
     ) -> None:
         """Update an existing group."""
         config = group.config.copy()
@@ -113,6 +114,11 @@ class GroupService:
                 config["query_builder"] = query_builder
             else:
                 config.pop("query_builder", None)
+        if query_mode is not None:
+            if query_mode in {"builder", "manual"}:
+                config["query_mode"] = query_mode
+            else:
+                config.pop("query_mode", None)
 
         # Save config
         import yaml

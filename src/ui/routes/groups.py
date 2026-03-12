@@ -26,7 +26,20 @@ def init_groups_routes(app, base_path: str):
         if group is None:
             return "Group not found", 404
 
+        def _build_cfg():
+            cfg = group.config.copy()
+            cfg["tags_str"] = ",".join(cfg.get("tags", []))
+            cfg["has_override_query"] = group.has_override_query()
+            cfg["override_query"] = group.read_override_query() if cfg["has_override_query"] else ""
+            cfg["query_builder"] = cfg.get("query_builder")
+            cfg["query_builder_json"] = json.dumps(cfg.get("query_builder") or {})
+            cfg["query_mode"] = cfg.get("query_mode") or ("manual" if cfg["has_override_query"] else "builder")
+            return cfg
+
         if request.method == "POST":
+            is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            save_scope = request.form.get("save_scope", "all").strip().lower()
+
             # Update group configuration
             display_name = request.form.get("display_name", "").strip()
             tags_str = request.form.get("tags", "").strip()
@@ -34,6 +47,7 @@ def init_groups_routes(app, base_path: str):
             output_dir = request.form.get("output_dir", "").strip()
             query = request.form.get("query", "").strip()
             query_builder_raw = request.form.get("query_builder_json", "").strip()
+            query_mode = request.form.get("query_mode", "").strip()
 
             query_builder = None
             if query_builder_raw:
@@ -42,38 +56,62 @@ def init_groups_routes(app, base_path: str):
                 except json.JSONDecodeError:
                     query_builder = None
 
-            if not query and not query_builder:
-                cfg = group.config.copy()
-                cfg["tags_str"] = ",".join(cfg.get("tags", []))
-                cfg["has_override_query"] = group.has_override_query()
-                cfg["override_query"] = group.read_override_query() if cfg["has_override_query"] else ""
-                cfg["query_builder"] = cfg.get("query_builder")
-                cfg["query_builder_json"] = json.dumps(cfg.get("query_builder") or {})
-                return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags)
+            if save_scope == "query_mode":
+                group_service.update_group(group=group, query_mode=query_mode)
+                group = group_service.get_group(handle)
+                cfg = _build_cfg()
+                return jsonify(ok=True, config=cfg)
 
-            tags = [t.strip() for t in tags_str.split(",") if t.strip()]
+            if save_scope == "settings":
+                tags = [t.strip() for t in tags_str.split(",") if t.strip()]
+                group_service.update_group(
+                    group=group,
+                    display_name=display_name,
+                    tags=tags,
+                    email_recipient=email_recipient or None,
+                    output_dir=output_dir or None,
+                    query_mode=query_mode,
+                )
+            elif save_scope == "query":
+                if not query and not query_builder:
+                    if is_ajax:
+                        return jsonify(ok=False, error="Save either Query Builder parameters or an override SQL script."), 400
+                    cfg = _build_cfg()
+                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, edit_mode=True)
+                group_service.update_group(
+                    group=group,
+                    query=query,
+                    query_builder=query_builder,
+                    query_mode=query_mode,
+                )
+            else:
+                if not query and not query_builder:
+                    if is_ajax:
+                        return jsonify(ok=False, error="Save either Query Builder parameters or an override SQL script."), 400
+                    cfg = _build_cfg()
+                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, edit_mode=True)
+                tags = [t.strip() for t in tags_str.split(",") if t.strip()]
+                group_service.update_group(
+                    group=group,
+                    display_name=display_name,
+                    tags=tags,
+                    query=query,
+                    query_builder=query_builder,
+                    email_recipient=email_recipient or None,
+                    output_dir=output_dir or None,
+                    query_mode=query_mode,
+                )
 
-            group_service.update_group(
-                group=group,
-                display_name=display_name,
-                tags=tags,
-                query=query,
-                query_builder=query_builder,
-                email_recipient=email_recipient or None,
-                output_dir=output_dir or None
-            )
-
-            return redirect(url_for("groups.groups"))
+            group = group_service.get_group(handle)
+            cfg = _build_cfg()
+            if is_ajax:
+                return jsonify(ok=True, config=cfg)
+            return render_template("group.html", group=group, config=cfg, all_tags=all_tags, edit_mode=False)
 
         # Prepare data for template
-        cfg = group.config.copy()
-        cfg["tags_str"] = ",".join(cfg.get("tags", []))
-        cfg["has_override_query"] = group.has_override_query()
-        cfg["override_query"] = group.read_override_query() if cfg["has_override_query"] else ""
-        cfg["query_builder"] = cfg.get("query_builder")
-        cfg["query_builder_json"] = json.dumps(cfg.get("query_builder") or {})
+        cfg = _build_cfg()
 
-        return render_template("group.html", group=group, config=cfg, all_tags=all_tags)
+        return render_template("group.html", group=group, config=cfg, all_tags=all_tags, edit_mode=False)
 
     @groups_bp.route("/group/new", methods=["GET", "POST"])
     def new_group():
@@ -82,7 +120,7 @@ def init_groups_routes(app, base_path: str):
         if request.method == "POST":
             handle = request.form.get("handle", "").strip()
             if not validate_group_handle(handle):
-                return render_template("group_new.html", error="Invalid group handle", all_tags=all_tags)
+                return render_template("group_create.html", error="Invalid group handle", all_tags=all_tags)
 
             display_name = request.form.get("display_name", handle).strip()
             tags = [t.strip() for t in request.form.get("tags", "").split(",") if t.strip()]
@@ -98,7 +136,7 @@ def init_groups_routes(app, base_path: str):
                     query_builder = None
 
             if not query and not query_builder:
-                return render_template("group_new.html", error="Create either Query Builder parameters or an override SQL script.", all_tags=all_tags)
+                return render_template("group_create.html", error="Create either Query Builder parameters or an override SQL script.", all_tags=all_tags)
 
             try:
                 group_service.create_group(
@@ -111,9 +149,9 @@ def init_groups_routes(app, base_path: str):
                 )
                 return redirect(url_for("groups.groups"))
             except ValueError as e:
-                return render_template("group_new.html", error=str(e), all_tags=all_tags)
+                return render_template("group_create.html", error=str(e), all_tags=all_tags)
 
-        return render_template("group_new.html", error=None, all_tags=all_tags)
+        return render_template("group_create.html", error=None, all_tags=all_tags)
 
     @groups_bp.route("/group/<handle>/delete", methods=["POST"])
     def delete_group(handle):

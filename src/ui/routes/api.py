@@ -314,4 +314,61 @@ def init_api_routes(app, base_path: str):
             except Exception as e:
                 return jsonify(error=str(e)), 200
 
+    @api_bp.route("/api/view-report", methods=["GET"])
+    def view_report():
+        """Retrieve report content as JSON for display in modal."""
+        from flask import current_app
+        handle = request.args.get("handle", "").strip()
+        
+        if not handle:
+            return jsonify({"error": "No handle provided"}), 400
+        
+        tracker = current_app.config.get("tracker")
+        if not tracker:
+            return jsonify({"error": "No job running"}), 400
+        
+        result = tracker.results.get(handle)
+        if not result:
+            return jsonify({"error": "Group not found or not completed yet"}), 404
+        
+        csv_path = result.get("csv_path")
+        if not csv_path:
+            return jsonify({"error": "Report file not available"}), 404
+        
+        try:
+            # Read CSV file
+            import csv
+            parsed_rows = []
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    # Generated report files typically have no header row; keep all rows as data.
+                    if not row or not any(str(cell).strip() for cell in row):
+                        continue
+                    parsed_rows.append(row)
+
+            if parsed_rows:
+                max_cols = max(len(row) for row in parsed_rows)
+            else:
+                max_cols = 1
+
+            # Provide synthetic headers so the UI can render a table.
+            if max_cols == 1:
+                headers = ["email"]
+            else:
+                headers = [f"column_{index + 1}" for index in range(max_cols)]
+
+            rows = [row + [""] * (max_cols - len(row)) for row in parsed_rows]
+            
+            return jsonify({
+                "headers": headers,
+                "rows": rows,
+                "total_rows": len(rows),
+                "file_path": csv_path
+            })
+        except FileNotFoundError:
+            return jsonify({"error": "Report file not found"}), 404
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     return api_bp
