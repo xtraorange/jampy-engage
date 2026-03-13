@@ -8,6 +8,23 @@
     <h1>{{ config.display_name or group.display_name or group.handle }}</h1>
     <div class="text-muted">Handle: {{ group.handle }}</div>
   </div>
+  <div class="dropdown" data-bwignore="true">
+    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="group-actions-menu" data-bs-toggle="dropdown" aria-expanded="false" data-bwignore="true">
+      ☰ Actions
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="group-actions-menu">
+      <li>
+        <button type="button" class="dropdown-item" id="copy-query-config-action">Copy Query Configuration</button>
+      </li>
+      <li>
+        <button type="button" class="dropdown-item" id="reset-query-config-action">Reset Query Configuration</button>
+      </li>
+      <li><hr class="dropdown-divider"></li>
+      <li>
+        <button type="button" class="dropdown-item text-danger" id="delete-group-action">Delete Group</button>
+      </li>
+    </ul>
+  </div>
 </div>
 
 {% if error %}
@@ -15,15 +32,17 @@
 {% endif %}
 
 <!-- Hidden form used for AJAX saves; never submitted as a traditional form -->
-<form id="group-edit-form" method="post" style="display:none;">
-  <input type="hidden" id="query_builder_json" name="query_builder_json" value='{{ config.query_builder_json | e }}'>
-  <input type="hidden" id="query_mode" name="query_mode" value="{{ config.query_mode }}">
-  <input type="hidden" id="display_name" name="display_name" value="{{ config.display_name }}">
-  <input type="hidden" id="tags" name="tags" value="{{ config.tags_str }}">
-  <input type="hidden" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}">
-  <input type="hidden" id="output_dir" name="output_dir" value="{{ config.output_dir }}">
-  <input type="hidden" id="query" name="query" value="{{ config.override_query }}">
+<form id="group-edit-form" method="post" style="display:none;" data-bwignore="true" data-1p-ignore="true" autocomplete="off">
+  <input type="hidden" id="query_builder_json" name="query_builder_json" value='{{ config.query_builder_json | e }}' data-bwignore="true" data-1p-ignore="true">
+  <input type="hidden" id="query_mode" name="query_mode" value="{{ config.query_mode }}" data-bwignore="true" data-1p-ignore="true">
+  <input type="hidden" id="display_name" name="display_name" value="{{ config.display_name }}" data-bwignore="true" data-1p-ignore="true">
+  <input type="hidden" id="tags" name="tags" value="{{ config.tags_str }}" data-bwignore="true" data-1p-ignore="true">
+  <input type="hidden" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}" data-bwignore="true" data-1p-ignore="true">
+  <input type="hidden" id="output_dir" name="output_dir" value="{{ config.output_dir }}" data-bwignore="true" data-1p-ignore="true">
+  <input type="hidden" id="query" name="query" value="{{ config.override_query }}" data-bwignore="true" data-1p-ignore="true">
 </form>
+<form id="group-delete-form" method="post" action="{{ url_for('groups.delete_group', handle=group.handle) }}" style="display:none;" data-bwignore="true" data-1p-ignore="true" autocomplete="off"></form>
+<form id="group-reset-query-form" method="post" action="{{ url_for('groups.reset_query_configuration', handle=group.handle) }}" style="display:none;" data-bwignore="true" data-1p-ignore="true" autocomplete="off"></form>
 
 <div class="row">
   <!-- ===== LEFT: GROUP SETTINGS CARD ===== -->
@@ -161,6 +180,35 @@
   <a href="{{ url_for('groups.groups') }}" class="btn btn-outline-secondary">Back to Groups</a>
 </div>
 
+<div class="modal fade" id="copy-query-config-modal" tabindex="-1" aria-hidden="true" data-bwignore="true" data-1p-ignore="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Copy Query Configuration</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="copy-source-search" class="form-label">Search Group</label>
+          <input type="text" class="form-control" id="copy-source-search" placeholder="Search by name or handle..." autocomplete="off" data-bwignore="true" data-1p-ignore="true">
+        </div>
+        <div id="copy-source-list" class="list-group mb-3" style="max-height: 260px; overflow-y: auto;"></div>
+        <div class="border rounded p-3 bg-light-subtle">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong id="copy-preview-title">Select a source group</strong>
+            <span class="badge bg-secondary" id="copy-preview-mode">Query Mode</span>
+          </div>
+          <div id="copy-preview-body" class="small text-muted">Select a group to preview its active query configuration.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="copy-query-config-save" disabled>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
   .builder-summary-box {
     padding: 0;
@@ -211,6 +259,12 @@
     background-color: #e7f1ff;
   }
 
+  #copy-source-list .list-group-item.active {
+    background: #e7f1ff;
+    color: #1f2937;
+    border-color: #b6d4fe;
+  }
+
 </style>
 
 <script src="{{ url_for('static', filename='js/tag_selector.js') }}"></script>
@@ -218,11 +272,14 @@
   const draftKey = `group_edit_draft:${window.location.pathname}`;
   const hasSavedOverride = {{ 'true' if config.has_override_query else 'false' }};
   const allTags = {{ all_tags | tojson }};
+  const copySourceGroups = Array.isArray({{ copy_source_groups | tojson }}) ? {{ copy_source_groups | tojson }} : [];
   const initialQueryMode = {{ config.query_mode | tojson }};
   let tagList = [];
   let currentQueryMode = (initialQueryMode === 'manual' || initialQueryMode === 'builder') ? initialQueryMode : (hasSavedOverride ? 'manual' : 'builder');
   let queryEditReturnMode = null;
   let tagSelector = null;
+  let copyModal = null;
+  let selectedCopySource = null;
 
   /* ---- utility ---- */
   function escapeHtml(value) {
@@ -794,6 +851,135 @@
     return String(value || '').split(',').map(t => t.trim()).filter(Boolean);
   }
 
+  function renderCopySourceList(filterText = '') {
+    const list = document.getElementById('copy-source-list');
+    if (!list) return;
+    const needle = String(filterText || '').trim().toLowerCase();
+    const candidates = copySourceGroups.filter((group) => {
+      if (!needle) return true;
+      return String(group.handle || '').toLowerCase().includes(needle)
+        || String(group.display_name || '').toLowerCase().includes(needle);
+    });
+
+    if (candidates.length === 0) {
+      list.innerHTML = '<div class="list-group-item text-muted">No groups found.</div>';
+      return;
+    }
+
+    list.innerHTML = candidates.map((group) => {
+      const isActive = selectedCopySource === group.handle;
+      return `
+        <button type="button" class="list-group-item list-group-item-action ${isActive ? 'active' : ''}" data-copy-source="${escapeHtml(group.handle)}">
+          <div class="fw-semibold">${escapeHtml(group.display_name || group.handle)}</div>
+          <div class="small text-muted">${escapeHtml(group.handle)}</div>
+        </button>
+      `;
+    }).join('');
+
+    list.querySelectorAll('button[data-copy-source]').forEach((button) => {
+      button.addEventListener('click', () => {
+        selectedCopySource = button.getAttribute('data-copy-source');
+        renderCopySourceList(document.getElementById('copy-source-search').value);
+        loadCopySourcePreview(selectedCopySource);
+      });
+    });
+  }
+
+  async function loadCopySourcePreview(sourceHandle) {
+    const title = document.getElementById('copy-preview-title');
+    const mode = document.getElementById('copy-preview-mode');
+    const body = document.getElementById('copy-preview-body');
+    const saveButton = document.getElementById('copy-query-config-save');
+    if (!title || !mode || !body || !saveButton) return;
+
+    saveButton.disabled = true;
+    title.textContent = 'Loading source configuration...';
+    mode.textContent = 'Loading';
+    body.className = 'small text-muted';
+    body.textContent = 'Fetching active query configuration.';
+
+    try {
+      const response = await fetch(`/group/{{ group.handle }}/query-config-preview?source_handle=${encodeURIComponent(sourceHandle)}`);
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {
+        title.textContent = 'Unable to load source group';
+        mode.textContent = 'Error';
+        body.className = 'small text-danger';
+        body.textContent = data.error || 'Unable to load query configuration preview.';
+        return;
+      }
+
+      title.textContent = `${data.source_display_name || data.source_handle} (${data.source_handle})`;
+      mode.textContent = data.query_mode === 'manual' ? 'Manual SQL' : 'Query Builder';
+      if (data.query_mode === 'manual') {
+        const sql = String(data.override_query || '').trim();
+        body.className = '';
+        body.innerHTML = sql
+          ? `<pre class="bg-white border p-2 mb-0 font-monospace" style="font-size: 0.8rem; max-height: 320px; overflow-y: auto;">${escapeHtml(sql)}</pre>`
+          : '<div class="small text-muted">No manual SQL query defined.</div>';
+      } else {
+        body.className = '';
+        body.innerHTML = formatBuilderSummaryHtml(data.query_builder || {});
+      }
+      saveButton.disabled = false;
+    } catch (error) {
+      title.textContent = 'Unable to load source group';
+      mode.textContent = 'Error';
+      body.className = 'small text-danger';
+      body.textContent = String(error || 'Request failed');
+    }
+  }
+
+  function openCopyQueryConfigModal() {
+    selectedCopySource = null;
+    const searchInput = document.getElementById('copy-source-search');
+    const saveButton = document.getElementById('copy-query-config-save');
+    const title = document.getElementById('copy-preview-title');
+    const mode = document.getElementById('copy-preview-mode');
+    const body = document.getElementById('copy-preview-body');
+    if (searchInput) searchInput.value = '';
+    if (saveButton) saveButton.disabled = true;
+    if (title) title.textContent = 'Select a source group';
+    if (mode) mode.textContent = 'Query Mode';
+    if (body) {
+      body.className = 'small text-muted';
+      body.textContent = 'Select a group to preview its active query configuration.';
+    }
+    renderCopySourceList('');
+    if (copyModal) copyModal.show();
+  }
+
+  async function saveCopiedQueryConfig() {
+    if (!selectedCopySource) return;
+    const saveButton = document.getElementById('copy-query-config-save');
+    if (saveButton) saveButton.disabled = true;
+
+    try {
+      const payload = new URLSearchParams();
+      payload.set('source_handle', selectedCopySource);
+      const response = await fetch('/group/{{ group.handle }}/copy-query-config', {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: payload.toString(),
+      });
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {
+        alert(data.error || 'Unable to copy query configuration.');
+        if (saveButton) saveButton.disabled = false;
+        return;
+      }
+
+      applyServerConfig(data.config || {});
+      if (copyModal) copyModal.hide();
+    } catch (error) {
+      alert('Error copying query configuration: ' + error);
+      if (saveButton) saveButton.disabled = false;
+    }
+  }
+
   /* ---- init ---- */
   window.addEventListener('load', () => {
     // Set up query card footer visibility (Edit Query button only appears in manual mode)
@@ -856,6 +1042,40 @@
 
     const saveQueryBtn = document.getElementById('save-query-btn');
     if (saveQueryBtn) saveQueryBtn.addEventListener('click', saveQuery);
+
+    const deleteAction = document.getElementById('delete-group-action');
+    if (deleteAction) {
+      deleteAction.addEventListener('click', () => {
+        if (!confirm('Delete this group? This action cannot be undone.')) return;
+        document.getElementById('group-delete-form').submit();
+      });
+    }
+
+    const resetAction = document.getElementById('reset-query-config-action');
+    if (resetAction) {
+      resetAction.addEventListener('click', () => {
+        if (!confirm('Reset this group query configuration? This clears saved query builder and manual SQL override.')) return;
+        document.getElementById('group-reset-query-form').submit();
+      });
+    }
+
+    const copyAction = document.getElementById('copy-query-config-action');
+    if (copyAction && window.bootstrap && bootstrap.Modal) {
+      copyModal = new bootstrap.Modal(document.getElementById('copy-query-config-modal'));
+      copyAction.addEventListener('click', openCopyQueryConfigModal);
+    }
+
+    const copySearchInput = document.getElementById('copy-source-search');
+    if (copySearchInput) {
+      copySearchInput.addEventListener('input', (event) => {
+        renderCopySourceList(event.target.value || '');
+      });
+    }
+
+    const copySaveButton = document.getElementById('copy-query-config-save');
+    if (copySaveButton) {
+      copySaveButton.addEventListener('click', saveCopiedQueryConfig);
+    }
   });
 </script>
 

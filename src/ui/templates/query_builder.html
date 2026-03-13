@@ -81,6 +81,74 @@
   </div>
 </div>
 
+<div id="role-seed-modal" class="matcher-modal" hidden>
+  <div class="matcher-modal-backdrop"></div>
+  <div class="matcher-modal-dialog card" style="max-width: 980px;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Build By Role Parameters From People</h5>
+      <button type="button" class="btn-close" id="role-seed-close" aria-label="Close"></button>
+    </div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label for="role-seed-person-search" class="form-label">Find Person(s)</label>
+        <input type="text" class="form-control" id="role-seed-person-search" placeholder="Search by ID, name, or username...">
+        <div id="role-seed-person-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 220px; overflow-y: auto;"></div>
+      </div>
+      <div class="mb-3">
+        <div class="small text-muted mb-1">Selected People</div>
+        <div id="role-seed-selected-people" class="d-flex flex-wrap gap-1"></div>
+      </div>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle" id="role-seed-attr-table">
+          <thead>
+            <tr>
+              <th style="width: 60px;">Use</th>
+              <th style="width: 180px;">Attribute</th>
+              <th id="role-seed-dynamic-head" colspan="1">Selected People Values</th>
+              <th style="width: 180px;">Users Sharing Attribute</th>
+            </tr>
+          </thead>
+          <tbody id="role-seed-attr-body">
+            <tr><td colspan="4" class="text-muted">Add one or more people to compare role attributes.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card border-light bg-light">
+        <div class="card-body py-2">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong class="small text-uppercase text-muted">Potential Hierarchy Leaders</strong>
+            <span id="role-seed-preview-count" class="badge bg-secondary">0</span>
+          </div>
+          <div id="role-seed-preview-list" class="small text-muted">Choose one or more attributes above to preview matches.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-outline-secondary" id="role-seed-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="role-seed-apply">Use These Parameters</button>
+    </div>
+  </div>
+</div>
+
+<div id="role-seed-merge-modal" class="matcher-modal" hidden>
+  <div class="matcher-modal-backdrop" id="role-seed-merge-backdrop"></div>
+  <div class="matcher-modal-dialog card" style="max-width: 560px; z-index: 2;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Apply By Role Parameters</h5>
+      <button type="button" class="btn-close" id="role-seed-merge-close" aria-label="Close"></button>
+    </div>
+    <div class="card-body">
+      <p class="mb-0">This By Role block already has parameters. Do you want to replace existing parameters or add to them?</p>
+      <small class="text-muted">Filters are not changed in either option.</small>
+    </div>
+    <div class="card-footer d-flex justify-content-end gap-2">
+      <button type="button" class="btn btn-outline-secondary" id="role-seed-merge-cancel">Cancel</button>
+      <button type="button" class="btn btn-outline-primary" id="role-seed-merge-add">Add to Existing</button>
+      <button type="button" class="btn btn-primary" id="role-seed-merge-replace">Replace Existing</button>
+    </div>
+  </div>
+</div>
+
 <style>
   .sticky-sql-panel {
     position: sticky;
@@ -130,6 +198,24 @@
     padding: 10px;
     background: #f9fcff;
   }
+
+  .matcher-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+  }
+
+  .matcher-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .matcher-modal-dialog {
+    position: relative;
+    margin: 6vh auto;
+    z-index: 1;
+  }
 </style>
 
 <script>
@@ -146,6 +232,24 @@
   let dragSourceIndex = null;
   let hasUnsavedChanges = false;
   let allowExit = false;
+  let roleSeedBlockId = null;
+  let roleSeedPeople = [];
+  let roleSeedChecked = {
+    job_title: true,
+    department_id: true,
+    bu_code: false,
+    company: false,
+    tree_branch: false,
+  };
+  let roleSeedCounts = {};
+
+  const ROLE_ATTR_ROWS = [
+    { key: 'job_title', label: 'Job Title/Code', attrKey: 'job_titles_display' },
+    { key: 'department_id', label: 'Department ID', attrKey: 'department_ids' },
+    { key: 'bu_code', label: 'Business Unit', attrKey: 'bu_codes' },
+    { key: 'company', label: 'Company', attrKey: 'companies' },
+    { key: 'tree_branch', label: 'Tree Branch', attrKey: 'tree_branches' },
+  ];
 
   function showDbErrorBanner(message) {
     const banner = document.getElementById('db-error-banner');
@@ -330,28 +434,32 @@
 
   function filterSummaryLines(block) {
     const f = (block && block.filters) || {};
-    const lines = [];
+    const details = [];
 
     if (Array.isArray(f.job_titles_display) && f.job_titles_display.length > 0) {
-      lines.push(`Filters: Job Titles/Codes: ${f.job_titles_display.join(', ')}`);
-    }
-    if (Array.isArray(f.bu_codes) && f.bu_codes.length > 0) {
-      lines.push(`Filters: Business Units: ${f.bu_codes.join(', ')}`);
-    }
-    if (Array.isArray(f.companies) && f.companies.length > 0) {
-      lines.push(`Filters: Companies: ${f.companies.join(', ')}`);
-    }
-    if (Array.isArray(f.tree_branches) && f.tree_branches.length > 0) {
-      lines.push(`Filters: Tree Branches: ${f.tree_branches.join(', ')}`);
+      details.push(`Job Titles/Codes: ${f.job_titles_display.join(', ')}`);
     }
     if (Array.isArray(f.department_ids) && f.department_ids.length > 0) {
-      lines.push(`Filters: Department IDs: ${f.department_ids.join(', ')}`);
+      details.push(`Department IDs: ${f.department_ids.join(', ')}`);
+    }
+    if (Array.isArray(f.bu_codes) && f.bu_codes.length > 0) {
+      details.push(`Business Units: ${f.bu_codes.join(', ')}`);
+    }
+    if (Array.isArray(f.companies) && f.companies.length > 0) {
+      details.push(`Companies: ${f.companies.join(', ')}`);
+    }
+    if (Array.isArray(f.tree_branches) && f.tree_branches.length > 0) {
+      details.push(`Tree Branches: ${f.tree_branches.join(', ')}`);
     }
     if (f.full_part_time) {
-      lines.push(`Filters: Full/Part Time: ${f.full_part_time === 'F' ? 'Full Time' : (f.full_part_time === 'P' ? 'Part Time' : f.full_part_time)}`);
+      details.push(`Full/Part Time: ${f.full_part_time === 'F' ? 'Full Time' : (f.full_part_time === 'P' ? 'Part Time' : f.full_part_time)}`);
     }
 
-    return lines;
+    if (details.length === 0) {
+      return [];
+    }
+
+    return ['Filters:', ...details.map(line => `- ${line}`)];
   }
 
   function normalizePersons(persons) {
@@ -781,6 +889,12 @@
             <div id="filter-job-titles-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
           </div>
           <div class="mb-3">
+            <label for="filter-department-ids" class="form-label">Department ID(s)</label>
+            <div id="filter-department-ids-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+            <input type="text" class="form-control" id="filter-department-ids" placeholder="Type to search...">
+            <div id="filter-department-ids-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+          </div>
+          <div class="mb-3">
             <label for="filter-bu-codes" class="form-label">Business Unit(s)</label>
             <div id="filter-bu-codes-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
             <input type="text" class="form-control" id="filter-bu-codes" placeholder="Type to search...">
@@ -797,12 +911,6 @@
             <div id="filter-tree-branches-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
             <input type="text" class="form-control" id="filter-tree-branches" placeholder="Type to search...">
             <div id="filter-tree-branches-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
-          </div>
-          <div class="mb-3">
-            <label for="filter-department-ids" class="form-label">Department ID(s)</label>
-            <div id="filter-department-ids-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
-            <input type="text" class="form-control" id="filter-department-ids" placeholder="Type to search...">
-            <div id="filter-department-ids-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
           </div>
           <div class="mb-1">
             <label for="filter-full-part-time" class="form-label">Full/Part Time</label>
@@ -830,8 +938,9 @@
     const block = blocks[selectedBlockIndex];
     title.textContent = `Selected Source Block: ${selectedBlockIndex + 1}. ${BLOCK_TYPES[block.type]}`;
     const previewControls = `
-      <div class="d-flex justify-content-end flex-wrap align-items-center gap-2 mb-3">
-        <button type="button" id="btn-test-block-query" class="btn btn-outline-secondary btn-sm">Get count for this source</button>
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        ${block.type === 'hierarchy_by_role' ? '<button type="button" id="role-seed-from-people" class="btn btn-sm btn-outline-secondary">Build Parameters from Person(s)</button>' : ''}
+        <button type="button" id="btn-test-block-query" class="btn btn-outline-secondary btn-sm ms-auto">Get count for this source</button>
         <span id="current-block-count" class="badge bg-secondary">Query Count: ${block.last_count === null ? '--' : block.last_count}</span>
       </div>
     `;
@@ -873,6 +982,12 @@
           <div id="attr-job-title-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="mb-3">
+          <label for="attr-department-id" class="form-label">Department ID</label>
+          <div id="attr-department-id-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+          <input type="text" class="form-control" id="attr-department-id" placeholder="Type to search...">
+          <div id="attr-department-id-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+        </div>
+        <div class="mb-3">
           <label for="attr-bu-code" class="form-label">Business Unit</label>
           <div id="attr-bu-code-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
           <input type="text" class="form-control" id="attr-bu-code" placeholder="Type to search...">
@@ -889,12 +1004,6 @@
           <div id="attr-tree-branch-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
           <input type="text" class="form-control" id="attr-tree-branch" placeholder="Type to search...">
           <div id="attr-tree-branch-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
-        </div>
-        <div class="mb-3">
-          <label for="attr-department-id" class="form-label">Department ID</label>
-          <div id="attr-department-id-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
-          <input type="text" class="form-control" id="attr-department-id" placeholder="Type to search...">
-          <div id="attr-department-id-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="mb-3 form-check">
           <input class="form-check-input" type="checkbox" id="role-direct-reports-only" ${block.direct_reports_only ? 'checked' : ''}>
@@ -1134,10 +1243,10 @@
     });
 
     [
+      ['attr-department-id-tags', 'attr-department-id', 'attr-department-id-suggestions', 'department_id', 'department_ids'],
       ['attr-bu-code-tags', 'attr-bu-code', 'attr-bu-code-suggestions', 'bu_code', 'bu_codes'],
       ['attr-company-tags', 'attr-company', 'attr-company-suggestions', 'company', 'companies'],
       ['attr-tree-branch-tags', 'attr-tree-branch', 'attr-tree-branch-suggestions', 'tree_branch', 'tree_branches'],
-      ['attr-department-id-tags', 'attr-department-id', 'attr-department-id-suggestions', 'department_id', 'department_ids'],
     ].forEach(([tagId, inputId, listId, field, key]) => {
       const input = document.getElementById(inputId);
       if (!input) return;
@@ -1170,6 +1279,11 @@
       renderBlocksList();
       updateSQL();
     });
+
+    const seedBtn = document.getElementById('role-seed-from-people');
+    if (seedBtn) {
+      seedBtn.addEventListener('click', () => openRoleSeedModal(block));
+    }
 
     let expanded = false;
     document.getElementById('toggle-role-preview').addEventListener('click', () => {
@@ -1254,6 +1368,15 @@
         updateSQL();
       }
     });
+    wireValueSearch('filter-department-ids', 'filter-department-ids-suggestions', 'department_id', (value) => {
+      if (!f.department_ids.includes(value)) {
+        f.department_ids.push(value);
+        markDirty();
+        bindFilterEditor(block);
+        renderBlocksList();
+        updateSQL();
+      }
+    });
     wireValueSearch('filter-bu-codes', 'filter-bu-codes-suggestions', 'bu_code', (value) => {
       if (!f.bu_codes.includes(value)) {
         f.bu_codes.push(value);
@@ -1275,15 +1398,6 @@
     wireValueSearch('filter-tree-branches', 'filter-tree-branches-suggestions', 'tree_branch', (value) => {
       if (!f.tree_branches.includes(value)) {
         f.tree_branches.push(value);
-        markDirty();
-        bindFilterEditor(block);
-        renderBlocksList();
-        updateSQL();
-      }
-    });
-    wireValueSearch('filter-department-ids', 'filter-department-ids-suggestions', 'department_id', (value) => {
-      if (!f.department_ids.includes(value)) {
-        f.department_ids.push(value);
         markDirty();
         bindFilterEditor(block);
         renderBlocksList();
@@ -1448,6 +1562,441 @@
     await recalcAllBlockCounts();
   });
 
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function roleBlockById(id) {
+    return blocks.find((block) => block.id === id) || null;
+  }
+
+  function rolePersonValue(person, key) {
+    if (key === 'job_title') {
+      const code = String(person.job_code || '').trim();
+      const title = String(person.job_title || '').trim();
+      if (code && title) return `${code} - ${title}`;
+      return code || title;
+    }
+    if (key === 'department_id') return String(person.department_id || '').trim();
+    if (key === 'bu_code') return String(person.bu_code || '').trim();
+    if (key === 'company') return String(person.company || '').trim();
+    if (key === 'tree_branch') return String(person.tree_branch || '').trim();
+    return '';
+  }
+
+  function uniqueValues(values) {
+    const seen = new Set();
+    const out = [];
+    (values || []).forEach((raw) => {
+      const value = String(raw || '').trim();
+      if (!value) return;
+      const key = value.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(value);
+    });
+    return out;
+  }
+
+  function roleSeedAttributeValues(key) {
+    return uniqueValues(roleSeedPeople.map((person) => rolePersonValue(person, key)));
+  }
+
+  function closeRoleSeedModal() {
+    const modal = document.getElementById('role-seed-modal');
+    if (!modal) return;
+    modal.hidden = true;
+    roleSeedBlockId = null;
+    roleSeedPeople = [];
+    roleSeedCounts = {};
+  }
+
+  function closeRoleSeedMergeModal() {
+    const modal = document.getElementById('role-seed-merge-modal');
+    if (!modal) return;
+    modal.hidden = true;
+  }
+
+  function chooseRoleSeedApplyMode() {
+    const modal = document.getElementById('role-seed-merge-modal');
+    const backdrop = document.getElementById('role-seed-merge-backdrop');
+    const close = document.getElementById('role-seed-merge-close');
+    const cancel = document.getElementById('role-seed-merge-cancel');
+    const add = document.getElementById('role-seed-merge-add');
+    const replace = document.getElementById('role-seed-merge-replace');
+    if (!modal || !backdrop || !close || !cancel || !add || !replace) {
+      return Promise.resolve('add');
+    }
+
+    modal.hidden = false;
+
+    return new Promise((resolve) => {
+      const finish = (value) => {
+        close.onclick = null;
+        cancel.onclick = null;
+        backdrop.onclick = null;
+        add.onclick = null;
+        replace.onclick = null;
+        closeRoleSeedMergeModal();
+        resolve(value);
+      };
+
+      close.onclick = () => finish(null);
+      cancel.onclick = () => finish(null);
+      backdrop.onclick = () => finish(null);
+      add.onclick = () => finish('add');
+      replace.onclick = () => finish('replace');
+    });
+  }
+
+  function renderRoleSeedPeople() {
+    const container = document.getElementById('role-seed-selected-people');
+    if (!container) return;
+    if (roleSeedPeople.length === 0) {
+      container.innerHTML = '<span class="text-muted small">No people selected yet.</span>';
+      return;
+    }
+    container.innerHTML = roleSeedPeople.map((person, index) => `
+      <span class="badge bg-primary d-inline-flex align-items-center gap-1">
+        ${escapeHtml((`${person.first_name || ''} ${person.last_name || ''}`).trim() || person.username || person.id)}
+        <button type="button" class="btn-close btn-close-white" aria-label="Remove" data-role-seed-remove="${index}"></button>
+      </span>
+    `).join('');
+
+    container.querySelectorAll('button[data-role-seed-remove]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const idx = Number(button.getAttribute('data-role-seed-remove'));
+        if (!Number.isInteger(idx)) return;
+        roleSeedPeople.splice(idx, 1);
+        renderRoleSeedPeople();
+        renderRoleSeedMatrix();
+        refreshRoleSeedCounts();
+        updateRoleSeedPreview();
+      });
+    });
+  }
+
+  function renderRoleSeedMatrix() {
+    const table = document.getElementById('role-seed-attr-table');
+    const body = document.getElementById('role-seed-attr-body');
+    if (!table || !body) return;
+
+    const headerCells = roleSeedPeople.map((person) => `<th>${escapeHtml((`${person.first_name || ''} ${person.last_name || ''}`).trim() || person.username || person.id)}</th>`).join('');
+    const colSpan = Math.max(1, roleSeedPeople.length);
+    const thead = `
+      <tr>
+        <th style="width: 60px;">Use</th>
+        <th style="width: 180px;">Attribute</th>
+        <th id="role-seed-dynamic-head" colspan="${colSpan}">Selected People Values</th>
+        <th style="width: 180px;">Users Sharing Attribute</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th></th>
+        ${headerCells || '<th class="text-muted">(none)</th>'}
+        <th></th>
+      </tr>
+    `;
+    table.querySelector('thead').innerHTML = thead;
+
+    if (roleSeedPeople.length === 0) {
+      body.innerHTML = '<tr><td colspan="4" class="text-muted">Add one or more people to compare role attributes.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = ROLE_ATTR_ROWS.map((row) => {
+      const valuesByPerson = roleSeedPeople.map((person) => rolePersonValue(person, row.key));
+      const valueCells = valuesByPerson.map((value) => `<td>${escapeHtml(value || '—')}</td>`).join('');
+      const checked = roleSeedChecked[row.key] ? 'checked' : '';
+      const share = Number.isInteger(roleSeedCounts[row.key]) ? roleSeedCounts[row.key] : '—';
+      return `
+        <tr>
+          <td><input type="checkbox" class="form-check-input" data-role-seed-check="${row.key}" ${checked}></td>
+          <td>${escapeHtml(row.label)}</td>
+          ${valueCells}
+          <td><span class="badge bg-light text-dark">${share}</span></td>
+        </tr>
+      `;
+    }).join('');
+
+    body.querySelectorAll('input[data-role-seed-check]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const key = input.getAttribute('data-role-seed-check');
+        roleSeedChecked[key] = !!input.checked;
+        updateRoleSeedPreview();
+      });
+    });
+  }
+
+  async function refreshRoleSeedCounts() {
+    if (roleSeedPeople.length === 0) {
+      roleSeedCounts = {};
+      renderRoleSeedMatrix();
+      return;
+    }
+
+    const payload = {
+      attributes: {
+        job_title: roleSeedAttributeValues('job_title'),
+        department_id: roleSeedAttributeValues('department_id'),
+        bu_code: roleSeedAttributeValues('bu_code'),
+        company: roleSeedAttributeValues('company'),
+        tree_branch: roleSeedAttributeValues('tree_branch'),
+      },
+    };
+
+    try {
+      clearDbErrorBanner();
+      const response = await fetch('/api/role-attribute-share-counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (data && data.error) {
+        showDbErrorBanner(data.error);
+        return;
+      }
+      roleSeedCounts = data || {};
+      renderRoleSeedMatrix();
+    } catch (error) {
+      showDbErrorBanner(error);
+    }
+  }
+
+  async function updateRoleSeedPreview() {
+    const count = document.getElementById('role-seed-preview-count');
+    const list = document.getElementById('role-seed-preview-list');
+    if (!count || !list) return;
+
+    const params = new URLSearchParams();
+    if (roleSeedChecked.job_title) roleSeedAttributeValues('job_title').forEach((value) => params.append('job_title', value));
+    if (roleSeedChecked.department_id) roleSeedAttributeValues('department_id').forEach((value) => params.append('department_id', value));
+    if (roleSeedChecked.bu_code) roleSeedAttributeValues('bu_code').forEach((value) => params.append('bu_code', value));
+    if (roleSeedChecked.company) roleSeedAttributeValues('company').forEach((value) => params.append('company', value));
+    if (roleSeedChecked.tree_branch) roleSeedAttributeValues('tree_branch').forEach((value) => params.append('tree_branch', value));
+
+    if (![...params.values()].some((v) => v)) {
+      count.textContent = '0';
+      list.className = 'small text-muted';
+      list.textContent = 'Choose one or more attributes above to preview matches.';
+      return;
+    }
+
+    try {
+      clearDbErrorBanner();
+      const response = await fetch(`/api/preview-role-roots?${params.toString()}`);
+      const employees = await response.json();
+      if (employees && employees.error) {
+        showDbErrorBanner(employees.error);
+        return;
+      }
+      const rows = Array.isArray(employees) ? employees : [];
+      count.textContent = String(rows.length);
+      if (rows.length === 0) {
+        list.className = 'small text-muted';
+        list.textContent = 'No employees match current selected attributes.';
+      } else {
+        list.className = 'small';
+        list.innerHTML = rows.map((emp) => `
+          <div class="mb-1">
+            <strong>${escapeHtml((`${emp.first_name || ''} ${emp.last_name || ''}`).trim())}</strong><br>
+            <span class="text-muted">${escapeHtml(emp.job_title || 'No title')} • ${escapeHtml(emp.username || '')}</span>
+          </div>
+        `).join('');
+      }
+    } catch (error) {
+      showDbErrorBanner(error);
+    }
+  }
+
+  function mergeUniqueInto(arrayRef, values) {
+    const base = Array.isArray(arrayRef) ? arrayRef : [];
+    const existing = new Set(base.map((value) => String(value).toLowerCase()));
+    (values || []).forEach((value) => {
+      const normalized = String(value || '').trim();
+      if (!normalized) return;
+      const key = normalized.toLowerCase();
+      if (existing.has(key)) return;
+      existing.add(key);
+      base.push(normalized);
+    });
+    return base;
+  }
+
+  function hasRoleAttributes(attributes) {
+    if (!attributes || typeof attributes !== 'object') return false;
+    return [
+      attributes.job_titles_display,
+      attributes.job_codes,
+      attributes.job_title_texts,
+      attributes.department_ids,
+      attributes.bu_codes,
+      attributes.companies,
+      attributes.tree_branches,
+    ].some((values) => Array.isArray(values) && values.length > 0);
+  }
+
+  function openRoleSeedModal(block) {
+    roleSeedBlockId = block.id;
+    roleSeedPeople = [];
+    roleSeedCounts = {};
+    roleSeedChecked = {
+      job_title: Array.isArray(block.attributes?.job_titles_display) && block.attributes.job_titles_display.length > 0,
+      department_id: Array.isArray(block.attributes?.department_ids) && block.attributes.department_ids.length > 0,
+      bu_code: Array.isArray(block.attributes?.bu_codes) && block.attributes.bu_codes.length > 0,
+      company: Array.isArray(block.attributes?.companies) && block.attributes.companies.length > 0,
+      tree_branch: Array.isArray(block.attributes?.tree_branches) && block.attributes.tree_branches.length > 0,
+    };
+
+    const modal = document.getElementById('role-seed-modal');
+    const search = document.getElementById('role-seed-person-search');
+    const suggestions = document.getElementById('role-seed-person-suggestions');
+    if (!modal || !search || !suggestions) return;
+
+    search.value = '';
+    suggestions.innerHTML = '';
+    suggestions.style.display = 'none';
+    renderRoleSeedPeople();
+    renderRoleSeedMatrix();
+    updateRoleSeedPreview();
+    modal.hidden = false;
+  }
+
+  function initRoleSeedModalHandlers() {
+    const modal = document.getElementById('role-seed-modal');
+    const backdrop = document.querySelector('#role-seed-modal .matcher-modal-backdrop');
+    const close = document.getElementById('role-seed-close');
+    const cancel = document.getElementById('role-seed-cancel');
+    const apply = document.getElementById('role-seed-apply');
+    const search = document.getElementById('role-seed-person-search');
+    const suggestions = document.getElementById('role-seed-person-suggestions');
+    if (!modal || !backdrop || !close || !cancel || !apply || !search || !suggestions) return;
+
+    const closeAll = () => closeRoleSeedModal();
+    backdrop.addEventListener('click', closeAll);
+    close.addEventListener('click', closeAll);
+    cancel.addEventListener('click', closeAll);
+
+    let timer = null;
+    search.addEventListener('input', (event) => {
+      const query = (event.target.value || '').trim();
+      clearTimeout(timer);
+      if (query.length < 2) {
+        suggestions.style.display = 'none';
+        return;
+      }
+
+      timer = setTimeout(async () => {
+        try {
+          clearDbErrorBanner();
+          const response = await fetch(`/api/search-employees?q=${encodeURIComponent(query)}`);
+          const data = await response.json();
+          if (data && data.error) {
+            showDbErrorBanner(data.error);
+            suggestions.style.display = 'none';
+            return;
+          }
+
+          const rows = Array.isArray(data) ? data : [];
+          if (rows.length === 0) {
+            suggestions.innerHTML = '<div class="list-group-item text-muted">No results</div>';
+            suggestions.style.display = 'block';
+            return;
+          }
+
+          suggestions.innerHTML = rows.map((emp) => `
+            <a href="#" class="list-group-item list-group-item-action" data-role-seed-id="${escapeHtml(emp.id)}">
+              <strong>${escapeHtml((`${emp.first_name || ''} ${emp.last_name || ''}`).trim())}</strong><br>
+              <small>${escapeHtml(emp.job_title || 'No title')} • ${escapeHtml(emp.username || '')}</small>
+            </a>
+          `).join('');
+
+          suggestions.querySelectorAll('a[data-role-seed-id]').forEach((item, idx) => {
+            item.addEventListener('click', (clickEvent) => {
+              clickEvent.preventDefault();
+              const person = rows[idx];
+              if (!person) return;
+              const exists = roleSeedPeople.some((existing) => String(existing.id) === String(person.id));
+              if (exists) return;
+              roleSeedPeople.push(person);
+              search.value = '';
+              suggestions.style.display = 'none';
+              renderRoleSeedPeople();
+              renderRoleSeedMatrix();
+              refreshRoleSeedCounts();
+              updateRoleSeedPreview();
+            });
+          });
+
+          suggestions.style.display = 'block';
+        } catch (error) {
+          showDbErrorBanner(error);
+        }
+      }, 200);
+    });
+
+    search.addEventListener('blur', () => {
+      setTimeout(() => { suggestions.style.display = 'none'; }, 200);
+    });
+
+    apply.addEventListener('click', async () => {
+      const block = roleBlockById(roleSeedBlockId);
+      if (!block) {
+        closeRoleSeedModal();
+        return;
+      }
+      block.attributes = normalizeRoleAttributes(block.attributes);
+      const hasExistingAttributes = hasRoleAttributes(block.attributes);
+
+      let applyMode = 'add';
+      if (hasExistingAttributes) {
+        applyMode = await chooseRoleSeedApplyMode();
+        if (!applyMode) {
+          return;
+        }
+      }
+
+      if (applyMode === 'replace') {
+        block.attributes = normalizeRoleAttributes({});
+      }
+
+      if (roleSeedChecked.job_title) {
+        const values = roleSeedAttributeValues('job_title');
+        block.attributes.job_titles_display = mergeUniqueInto(block.attributes.job_titles_display, values);
+        values.forEach((value) => {
+          const parsed = parseJobDisplay(value);
+          block.attributes.job_codes = mergeUniqueInto(block.attributes.job_codes, [parsed.code || value]);
+          block.attributes.job_title_texts = mergeUniqueInto(block.attributes.job_title_texts, [parsed.title || value]);
+        });
+      }
+      if (roleSeedChecked.department_id) {
+        block.attributes.department_ids = mergeUniqueInto(block.attributes.department_ids, roleSeedAttributeValues('department_id'));
+      }
+      if (roleSeedChecked.bu_code) {
+        block.attributes.bu_codes = mergeUniqueInto(block.attributes.bu_codes, roleSeedAttributeValues('bu_code'));
+      }
+      if (roleSeedChecked.company) {
+        block.attributes.companies = mergeUniqueInto(block.attributes.companies, roleSeedAttributeValues('company'));
+      }
+      if (roleSeedChecked.tree_branch) {
+        block.attributes.tree_branches = mergeUniqueInto(block.attributes.tree_branches, roleSeedAttributeValues('tree_branch'));
+      }
+
+      markDirty();
+      bindRoleBlockEditor(block);
+      renderBlocksList();
+      updateRolePreview(block, false);
+      updateSQL();
+      closeRoleSeedModal();
+    });
+  }
+
   document.querySelectorAll('a[href]').forEach((link) => {
     link.addEventListener('click', (event) => {
       if (!confirmLeaveIfDirty()) {
@@ -1463,6 +2012,8 @@
     event.preventDefault();
     event.returnValue = '';
   });
+
+  initRoleSeedModalHandlers();
 
   function upgradeLegacyParams(params) {
     if (!params || typeof params !== 'object') return null;

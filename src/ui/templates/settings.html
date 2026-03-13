@@ -6,9 +6,29 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h1>General Settings</h1>
+  <div class="dropdown">
+    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="settings-actions-menu" data-bs-toggle="dropdown" aria-expanded="false">
+      ☰ Actions
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="settings-actions-menu">
+      <li><a class="dropdown-item" href="{{ url_for('main.adhoc_match') }}">Ad Hoc Name Matcher</a></li>
+      <li><a class="dropdown-item" href="{{ url_for('updates.email_templates') }}">Email Templates</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" href="{{ url_for('updates.backup') }}">Backup Configuration</a></li>
+      <li><a class="dropdown-item" href="{{ url_for('updates.restore') }}">Restore Configuration</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li>
+        <button type="submit" class="dropdown-item" form="settings-form" name="reset_stats" value="1" onclick="return confirm('Reset all tracked app statistics?');">
+          Reset Statistics
+        </button>
+      </li>
+      <li><a class="dropdown-item" href="{{ url_for('updates.updates') }}">Updates</a></li>
+      <li><button type="button" class="dropdown-item text-danger" id="restart-app-action">Restart App</button></li>
+    </ul>
+  </div>
 </div>
 
-<form method="post" class="mb-4" data-unsaved-guard="true">
+<form id="settings-form" method="post" class="mb-4" data-unsaved-guard="true">
   <div class="row">
     <div class="col-md-6">
       <fieldset class="mb-4">
@@ -42,6 +62,24 @@
         </div>
         </div>
       </fieldset>
+
+      <fieldset class="mb-4">
+        <legend class="mb-3">
+          Database Settings
+        </legend>
+        <div class="field-padded">
+        <div class="mb-3">
+          <label for="oracle_tns" class="form-label">
+            Oracle TNS
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="The Oracle TNS string for your database connection (e.g., tnsname or full connection string)">?</span>
+          </label>
+          <input type="text" class="form-control" id="oracle_tns" name="oracle_tns" value="{{ config.oracle_tns }}" placeholder="e.g., MYDB or server:1521/MYDB">
+        </div>
+        </div>
+      </fieldset>
+
+    </div>
+    <div class="col-md-6">
       <fieldset class="mb-4">
         <legend class="mb-3">
           Email Settings
@@ -112,41 +150,6 @@
       </fieldset>
       
     </div>
-    <div class="col-md-6">
-            <fieldset class="mb-4">
-        <legend class="mb-3">
-          Database Settings
-        </legend>
-        <div class="field-padded">
-        <div class="mb-3">
-          <label for="oracle_tns" class="form-label">
-            Oracle TNS
-            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="The Oracle TNS string for your database connection (e.g., tnsname or full connection string)">?</span>
-          </label>
-          <input type="text" class="form-control" id="oracle_tns" name="oracle_tns" value="{{ config.oracle_tns }}" placeholder="e.g., MYDB or server:1521/MYDB">
-        </div>
-        </div>
-      </fieldset>
-      <fieldset class="mb-4">
-        <legend class="mb-3">Actions</legend>
-        <div class="field-padded">
-          <div class="d-grid gap-2">
-            <a href="{{ url_for('main.adhoc_match') }}" class="btn btn-outline-secondary">Ad Hoc Name Matcher</a>
-            <a href="{{ url_for('updates.email_templates') }}" class="btn btn-outline-secondary">Email Templates</a>
-            <a href="{{ url_for('updates.updates') }}" class="btn btn-outline-secondary">Updates</a>
-            <hr class="my-1">
-            <a href="{{ url_for('updates.backup') }}" class="btn btn-primary">Backup Configuration</a>
-            <a href="{{ url_for('updates.restore') }}" class="btn btn-outline-primary">Restore Configuration</a>
-
-            <hr class="my-1">
-            <button type="button" id="restart-app" class="btn btn-warning">Restart App</button>
-            <button type="submit" name="reset_stats" value="1" class="btn btn-outline-danger w-100" onclick="return confirm('Reset all tracked app statistics?');">Reset Statistics</button>
-          </div>
-        </div>
-      </fieldset>
-
-      
-    </div>
   </div>
   <button type="submit" class="btn btn-primary mt-3">Save</button>
 </form>
@@ -173,7 +176,7 @@
     }
   });
 
-  document.getElementById('restart-app').addEventListener('click', async function() {
+  document.getElementById('restart-app-action').addEventListener('click', async function() {
     if (!confirm('Restart the application now?')) return;
     const btn = this;
     btn.disabled = true;

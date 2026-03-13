@@ -36,6 +36,18 @@ def init_groups_routes(app, base_path: str):
             cfg["query_mode"] = cfg.get("query_mode") or ("manual" if cfg["has_override_query"] else "builder")
             return cfg
 
+        def _copy_source_groups():
+            sources = []
+            for candidate in group_service.discover_groups():
+                if candidate.handle == group.handle:
+                    continue
+                sources.append({
+                    "handle": candidate.handle,
+                    "display_name": candidate.display_name or candidate.handle,
+                })
+            sources.sort(key=lambda item: (item.get("display_name") or item.get("handle") or "").lower())
+            return sources
+
         if request.method == "POST":
             is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
             save_scope = request.form.get("save_scope", "all").strip().lower()
@@ -77,7 +89,7 @@ def init_groups_routes(app, base_path: str):
                     if is_ajax:
                         return jsonify(ok=False, error="Save either Query Builder parameters or an override SQL script."), 400
                     cfg = _build_cfg()
-                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, edit_mode=True)
+                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True)
                 group_service.update_group(
                     group=group,
                     query=query,
@@ -89,7 +101,7 @@ def init_groups_routes(app, base_path: str):
                     if is_ajax:
                         return jsonify(ok=False, error="Save either Query Builder parameters or an override SQL script."), 400
                     cfg = _build_cfg()
-                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, edit_mode=True)
+                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True)
                 tags = [t.strip() for t in tags_str.split(",") if t.strip()]
                 group_service.update_group(
                     group=group,
@@ -106,12 +118,98 @@ def init_groups_routes(app, base_path: str):
             cfg = _build_cfg()
             if is_ajax:
                 return jsonify(ok=True, config=cfg)
-            return render_template("group.html", group=group, config=cfg, all_tags=all_tags, edit_mode=False)
+            return render_template("group.html", group=group, config=cfg, all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=False)
 
         # Prepare data for template
         cfg = _build_cfg()
 
-        return render_template("group.html", group=group, config=cfg, all_tags=all_tags, edit_mode=False)
+        return render_template("group.html", group=group, config=cfg, all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=False)
+
+    @groups_bp.route("/group/<handle>/query-config-preview", methods=["GET"])
+    def query_config_preview(handle):
+        """Return active query configuration for a source group preview."""
+        target = group_service.get_group(handle)
+        if target is None:
+            return jsonify(ok=False, error="Target group not found."), 404
+
+        source_handle = request.args.get("source_handle", "").strip()
+        source = group_service.get_group(source_handle)
+        if source is None:
+            return jsonify(ok=False, error="Source group not found."), 404
+        if source.handle == target.handle:
+            return jsonify(ok=False, error="Choose a different source group."), 400
+
+        has_override = source.has_override_query()
+        source_mode = source.config.get("query_mode")
+        if source_mode not in {"manual", "builder"}:
+            source_mode = "manual" if has_override else "builder"
+
+        payload = {
+            "ok": True,
+            "source_handle": source.handle,
+            "source_display_name": source.display_name or source.handle,
+            "query_mode": source_mode,
+            "query_builder": source.config.get("query_builder") or {},
+            "override_query": source.read_override_query() if has_override else "",
+        }
+        return jsonify(payload)
+
+    @groups_bp.route("/group/<handle>/copy-query-config", methods=["POST"])
+    def copy_query_configuration(handle):
+        """Copy only active query configuration from another group."""
+        target = group_service.get_group(handle)
+        if target is None:
+            return jsonify(ok=False, error="Target group not found."), 404
+
+        source_handle = request.form.get("source_handle", "").strip()
+        source = group_service.get_group(source_handle)
+        if source is None:
+            return jsonify(ok=False, error="Source group not found."), 404
+        if source.handle == target.handle:
+            return jsonify(ok=False, error="Choose a different source group."), 400
+
+        has_override = source.has_override_query()
+        source_mode = source.config.get("query_mode")
+        if source_mode not in {"manual", "builder"}:
+            source_mode = "manual" if has_override else "builder"
+
+        if source_mode == "manual":
+            group_service.update_group(
+                group=target,
+                query=source.read_override_query(),
+                query_mode="manual",
+            )
+        else:
+            group_service.update_group(
+                group=target,
+                query_builder=source.config.get("query_builder") or {},
+                query_mode="builder",
+            )
+
+        updated = group_service.get_group(handle)
+        cfg = updated.config.copy()
+        cfg["tags_str"] = ",".join(cfg.get("tags", []))
+        cfg["has_override_query"] = updated.has_override_query()
+        cfg["override_query"] = updated.read_override_query() if cfg["has_override_query"] else ""
+        cfg["query_builder"] = cfg.get("query_builder")
+        cfg["query_builder_json"] = json.dumps(cfg.get("query_builder") or {})
+        cfg["query_mode"] = cfg.get("query_mode") or ("manual" if cfg["has_override_query"] else "builder")
+        return jsonify(ok=True, config=cfg)
+
+    @groups_bp.route("/group/<handle>/reset-query-configuration", methods=["POST"])
+    def reset_query_configuration(handle):
+        """Reset both manual SQL override and query-builder configuration."""
+        group = group_service.get_group(handle)
+        if group is None:
+            return "Group not found", 404
+
+        group_service.update_group(
+            group=group,
+            query="",
+            query_builder={},
+            query_mode="builder",
+        )
+        return redirect(url_for("groups.edit_group", handle=handle))
 
     @groups_bp.route("/group/new", methods=["GET", "POST"])
     def new_group():

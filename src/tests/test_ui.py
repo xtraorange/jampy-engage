@@ -93,6 +93,8 @@ def test_index_page(client):
     rv = client.get("/settings")
     assert rv.status_code == 200
     assert b"General Settings" in rv.data
+    assert b"settings-actions-menu" in rv.data
+    assert b"Restart App" in rv.data
 
 
 def test_settings_can_save_ui_port(client, app_workspace):
@@ -678,6 +680,13 @@ def test_query_builder_routes(client, monkeypatch):
     assert b"attr-tree-branch-tags" in response.data
     assert b"attr-department-id-tags" in response.data
     assert b"Refresh All Block Counts" in response.data
+    assert b"Build Parameters from Person(s)" in response.data
+    assert b"Replace Existing" in response.data
+    assert b"Add to Existing" in response.data
+
+    # Department ID should appear before BU in both by-role attributes and filters.
+    assert response.data.find(b"attr-department-id-tags") < response.data.find(b"attr-bu-code-tags")
+    assert response.data.find(b"filter-department-ids-tags") < response.data.find(b"filter-bu-codes-tags")
 
     response = client.get("/tag/new")
     assert response.status_code == 200
@@ -753,6 +762,8 @@ def test_group_edit_hides_builder_summary_when_override_exists(client, app_works
     assert b"Group Settings" in rv.data
     assert b"Query Configuration" in rv.data
     assert b"Edit Query" in rv.data
+    assert b"group-actions-menu" in rv.data
+    assert b"Copy Query Configuration" in rv.data
 
 
 def test_group_edit_renders_saved_builder_summary_without_navigation(client, app_workspace):
@@ -813,6 +824,105 @@ def test_delete_group_route_removes_group_folder(client, app_workspace):
     rv = client.post("/group/delete_me/delete", follow_redirects=False)
     assert rv.status_code == 302
     assert not (base / "groups" / "delete_me").exists()
+
+
+def test_reset_query_configuration_clears_builder_and_override(client, app_workspace):
+    _, base = app_workspace
+    _write_group(
+        base,
+        "reset_me",
+        query_builder={"mode": "by_person", "person_id": "12345"},
+        override_query="SELECT * FROM omsadm.employee_mv",
+    )
+
+    rv = client.post("/group/reset_me/reset-query-configuration", follow_redirects=False)
+    assert rv.status_code == 302
+
+    cfg = yaml.safe_load((base / "groups" / "reset_me" / "group.yaml").read_text(encoding="utf-8")) or {}
+    assert "query_builder" not in cfg
+    assert cfg.get("query_mode") == "builder"
+    assert not (base / "groups" / "reset_me" / "query.sql").exists()
+
+
+def test_copy_query_configuration_copies_only_active_manual_mode(client, app_workspace):
+    _, base = app_workspace
+    _write_group(
+        base,
+        "source_manual",
+        query_builder={"mode": "by_role", "attributes_job_code": "ABC123"},
+        override_query="SELECT USERNAME FROM omsadm.employee_mv",
+    )
+    source_cfg_path = base / "groups" / "source_manual" / "group.yaml"
+    source_cfg = yaml.safe_load(source_cfg_path.read_text(encoding="utf-8")) or {}
+    source_cfg["query_mode"] = "manual"
+    source_cfg_path.write_text(yaml.safe_dump(source_cfg), encoding="utf-8")
+
+    _write_group(base, "target_group")
+
+    rv = client.post(
+        "/group/target_group/copy-query-config",
+        data={"source_handle": "source_manual"},
+    )
+    assert rv.status_code == 200
+    body = rv.get_json() or {}
+    assert body.get("ok") is True
+
+    target_cfg = yaml.safe_load((base / "groups" / "target_group" / "group.yaml").read_text(encoding="utf-8")) or {}
+    assert target_cfg.get("query_mode") == "manual"
+    assert "query_builder" not in target_cfg
+    copied_sql = (base / "groups" / "target_group" / "query.sql").read_text(encoding="utf-8")
+    assert copied_sql == "SELECT USERNAME FROM omsadm.employee_mv"
+
+
+def test_copy_query_configuration_copies_only_active_builder_mode(client, app_workspace):
+    _, base = app_workspace
+    _write_group(
+        base,
+        "source_builder",
+        query_builder={"mode": "by_person", "person_id": "00001"},
+        override_query="SELECT THIS_SHOULD_NOT_COPY FROM dual",
+    )
+    source_cfg_path = base / "groups" / "source_builder" / "group.yaml"
+    source_cfg = yaml.safe_load(source_cfg_path.read_text(encoding="utf-8")) or {}
+    source_cfg["query_mode"] = "builder"
+    source_cfg_path.write_text(yaml.safe_dump(source_cfg), encoding="utf-8")
+
+    _write_group(base, "target_builder")
+
+    rv = client.post(
+        "/group/target_builder/copy-query-config",
+        data={"source_handle": "source_builder"},
+    )
+    assert rv.status_code == 200
+    body = rv.get_json() or {}
+    assert body.get("ok") is True
+
+    target_cfg = yaml.safe_load((base / "groups" / "target_builder" / "group.yaml").read_text(encoding="utf-8")) or {}
+    assert target_cfg.get("query_mode") == "builder"
+    assert target_cfg.get("query_builder") == {"mode": "by_person", "person_id": "00001"}
+    assert not (base / "groups" / "target_builder" / "query.sql").exists()
+
+
+def test_query_config_preview_returns_active_source_configuration(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "preview_target")
+    _write_group(
+        base,
+        "preview_source",
+        query_builder={"mode": "by_role", "attributes_job_code": "000545"},
+        override_query="SELECT USERNAME FROM omsadm.employee_mv",
+    )
+    source_cfg_path = base / "groups" / "preview_source" / "group.yaml"
+    source_cfg = yaml.safe_load(source_cfg_path.read_text(encoding="utf-8")) or {}
+    source_cfg["query_mode"] = "manual"
+    source_cfg_path.write_text(yaml.safe_dump(source_cfg), encoding="utf-8")
+
+    rv = client.get("/group/preview_target/query-config-preview?source_handle=preview_source")
+    assert rv.status_code == 200
+    data = rv.get_json() or {}
+    assert data.get("ok") is True
+    assert data.get("query_mode") == "manual"
+    assert "SELECT USERNAME" in (data.get("override_query") or "")
 
 
 def test_tag_edit_page_and_update(client, app_workspace):

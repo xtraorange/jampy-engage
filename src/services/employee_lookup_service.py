@@ -49,6 +49,7 @@ def _serialize_row(row: Any) -> Dict[str, Any]:
         "company": getter("COMPANY", "company") if isinstance(row, dict) else getter(8),
         "tree_branch": getter("TREE_BRANCH", "tree_branch") if isinstance(row, dict) else getter(9),
         "full_part_time": getter("FULL_PART_TIME", "full_part_time") if isinstance(row, dict) else getter(10),
+        "job_code": getter("JOB_CODE", "job_code") if isinstance(row, dict) else getter(11),
     }
 
 
@@ -102,7 +103,8 @@ class EmployeeLookupService:
                        BU_CODE,
                        COMPANY,
                        TREE_BRANCH,
-                       FULL_PART_TIME
+                      FULL_PART_TIME,
+                      JOB_CODE
                 FROM omsadm.employee_mv
                 WHERE status_code != 'T'
                   AND ({' OR '.join(conditions)})
@@ -173,7 +175,8 @@ class EmployeeLookupService:
                BU_CODE,
                COMPANY,
                TREE_BRANCH,
-               FULL_PART_TIME
+             FULL_PART_TIME,
+             JOB_CODE
         FROM omsadm.employee_mv
         WHERE status_code != 'T'
           AND ({' OR '.join(conditions)})
@@ -232,7 +235,8 @@ class EmployeeLookupService:
                BU_CODE,
                COMPANY,
                TREE_BRANCH,
-               FULL_PART_TIME
+             FULL_PART_TIME,
+             JOB_CODE
         FROM omsadm.employee_mv
         WHERE status_code != 'T'
           AND ({' OR '.join(conditions)})

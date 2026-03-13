@@ -188,6 +188,54 @@ def init_api_routes(app, base_path: str):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    @api_bp.route("/api/role-attribute-share-counts", methods=["POST"])
+    def role_attribute_share_counts():
+        """Return active-employee share counts for selected By Role attribute values."""
+        cfg = config_service.load_general_config()
+        payload = request.get_json(silent=True) or {}
+        attributes = payload.get("attributes") or {}
+
+        attr_map = {
+            "job_title": "JOB_CODE",
+            "department_id": "DEPARTMENT_ID",
+            "bu_code": "BU_CODE",
+            "company": "COMPANY",
+            "tree_branch": "TREE_BRANCH",
+        }
+
+        results = {}
+        try:
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+            for key, column in attr_map.items():
+                raw_values = attributes.get(key) or []
+                values = [str(value).strip() for value in raw_values if str(value).strip()]
+                if key == "job_title":
+                    values = [value.split(" - ", 1)[0].strip() for value in values]
+
+                values = [value.replace("'", "''") for value in values if value]
+                if not values:
+                    results[key] = 0
+                    continue
+
+                condition = _single_or_in_condition(column, values)
+                sql = f"""
+                SELECT COUNT(*) AS CNT
+                FROM omsadm.employee_mv
+                WHERE status_code != 'T'
+                  AND {condition}
+                """
+                row = executor.run_query(sql)
+                if row and isinstance(row[0], dict):
+                    results[key] = int(row[0].get("CNT") or row[0].get("cnt") or 0)
+                elif row:
+                    results[key] = int(row[0][0])
+                else:
+                    results[key] = 0
+            executor.close()
+            return jsonify(results)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     @api_bp.route("/api/search-tree-branches", methods=["GET"])
     def search_tree_branches():
         """Typeahead search for tree branches."""
