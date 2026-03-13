@@ -155,7 +155,7 @@ Clear-Host
 
 # Clean up any stale state from a previous session that may have been killed mid-restart.
 Remove-Item (Join-Path $RootDir 'restart.flag') -Force -ErrorAction SilentlyContinue
-$env:JAMPY_SKIP_BROWSER = ''
+$env:VIVA_ENGAGE_TOOLS_SKIP_BROWSER = ''
 
 while ($true) {
     $server = Start-ServerProcess
@@ -190,10 +190,10 @@ while ($true) {
         Remove-Item (Join-Path $RootDir 'restart.flag') -Force -ErrorAction SilentlyContinue
 
         if ($restartMode -eq 'restart:no-browser') {
-            $env:JAMPY_SKIP_BROWSER = '1'
+            $env:VIVA_ENGAGE_TOOLS_SKIP_BROWSER = '1'
             $script:StatusBase = 'Restarting (reconnecting current tab)'
         } else {
-            $env:JAMPY_SKIP_BROWSER = ''
+            $env:VIVA_ENGAGE_TOOLS_SKIP_BROWSER = ''
             $script:StatusBase = 'Restarting'
         }
 

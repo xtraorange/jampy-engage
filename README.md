@@ -14,7 +14,7 @@ You can run it in either mode:
 
 Windows (PowerShell):
 ```powershell
-irm https://raw.githubusercontent.com/xtraorange/jampy-engage/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/xtraorange/viva-engage-tools/main/scripts/install.ps1 | iex
 ```
 
 ### Manual install
@@ -22,8 +22,8 @@ irm https://raw.githubusercontent.com/xtraorange/jampy-engage/main/scripts/insta
 1. Install Python 3.10+
 2. Clone or download this repository:
 ```bash
-git clone https://github.com/xtraorange/jampy-engage.git
-cd jampy-engage
+git clone https://github.com/xtraorange/viva-engage-tools.git
+cd viva-engage-tools
 ```
 3. Start the app by double-clicking start.bat.
 
@@ -139,7 +139,7 @@ python run_reports.py --cli sales_team --email user@example.com
 ## Project Structure
 
 ```text
-jampy-engage/
+viva-engage-tools/
 ├── config/
 ├── groups/
 ├── src/
@@ -172,7 +172,7 @@ To release a new version:
 ## Support
 
 For issues and feature requests, use:
-https://github.com/xtraorange/jampy-engage
+https://github.com/xtraorange/viva-engage-tools
 
 TODO:
  - Introduce "Test Query" function.  The test query function should open a modal for testing the "current" query from a query builder.  So if you're inside the query builder, it's the on your currently configuring.  If you're on the group view and it's in query builder mode (not manual override) it's that one.  When the modal opens, it should show two things: 1. A count of records for that query.  And 2. a table of the results.  However, in this case, in addition to the normal e-mails, the query should also select (and display in the table) the name and title of the selected people.  It should paginate the results over 100.  A button to run the query tester should be on the group view, and on the query builder page as another action button.

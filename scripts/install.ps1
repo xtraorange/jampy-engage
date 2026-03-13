@@ -1,9 +1,9 @@
 # Viva Engage Tools Installer for Windows
 # One-line install:
-# irm https://raw.githubusercontent.com/xtraorange/jampy-engage/main/scripts/install.ps1 | iex
+# irm https://raw.githubusercontent.com/xtraorange/viva-engage-tools/main/scripts/install.ps1 | iex
 
 param(
-    [string]$TargetDir = "$env:USERPROFILE\jampy-engage",
+    [string]$TargetDir = "$env:USERPROFILE\viva-engage-tools",
     [switch]$SkipClone
 )
 
@@ -68,7 +68,7 @@ if (-not $SkipClone) {
         }
     } else {
         Write-Host 'Cloning repository...' -ForegroundColor Yellow
-        git clone https://github.com/xtraorange/jampy-engage.git $TargetDir
+        git clone https://github.com/xtraorange/viva-engage-tools.git $TargetDir
         Set-Location $TargetDir
     }
 } else {
@@ -100,5 +100,11 @@ Write-Host 'Installing dependencies...' -ForegroundColor Yellow
 & $venvPython -m pip install -r requirements.txt
 
 Write-Section 'Install Complete'
-Write-Host 'Start the application by double-clicking start.bat.' -ForegroundColor Green
-Write-Host 'On first launch, start.bat will now handle bootstrap automatically if needed.' -ForegroundColor DarkGray
+Write-Host 'Launching application...' -ForegroundColor Green
+
+$startBat = Join-Path (Get-Location) 'start.bat'
+if (Test-Path $startBat) {
+    Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $startBat
+} else {
+    Write-Host 'start.bat not found. Navigate to the install folder and double-click start.bat to launch.' -ForegroundColor Yellow
+}

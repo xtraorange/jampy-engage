@@ -87,7 +87,7 @@ def run_app():
             f"Configured port {preferred_port} is in use; starting on available port {port} instead."
         )
 
-    skip_browser = str(os.environ.get("JAMPY_SKIP_BROWSER", "")).strip().lower() in {"1", "true", "yes"}
+    skip_browser = str(os.environ.get("VIVA_ENGAGE_TOOLS_SKIP_BROWSER", "")).strip().lower() in {"1", "true", "yes"}
 
     # Open browser after a brief delay to let the server start.
     # For UI-triggered restarts we skip this so the existing tab can reconnect.
@@ -100,7 +100,7 @@ def run_app():
         browser_thread.start()
 
     # Reset one-shot skip flag for any future non-restart launches in this shell.
-    os.environ["JAMPY_SKIP_BROWSER"] = ""
+    os.environ["VIVA_ENGAGE_TOOLS_SKIP_BROWSER"] = ""
 
     # Suppress Werkzeug banner by redirecting stdout during startup
     old_stdout = sys.stdout

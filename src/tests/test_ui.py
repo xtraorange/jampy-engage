@@ -34,7 +34,7 @@ def app_workspace(tmp_path, monkeypatch):
         yaml.safe_dump(
             {
                 "version": "0.2.0",
-                "repository": "xtraorange/jampy-engage",
+                "repository": "xtraorange/viva-engage-tools",
             }
         ),
         encoding="utf-8",
@@ -627,7 +627,7 @@ def test_update_stashes_changes(monkeypatch, client):
     assert rv.status_code == 302
 
     wait_for_update_to_finish(client)
-    assert ["git", "stash", "push", "-u", "-m", "jampy-update"] in calls
+    assert ["git", "stash", "push", "-u", "-m", "viva-engage-tools-update"] in calls
     assert ["git", "pull", "--ff-only"] in calls
     assert ["git", "stash", "pop"] in calls
 
@@ -647,7 +647,7 @@ def test_force_update_endpoint(monkeypatch, client):
     assert rv.status_code == 302
 
     status = wait_for_update_to_finish(client)
-    assert ["git", "stash", "push", "-u", "-m", "jampy-update"] in calls
+    assert ["git", "stash", "push", "-u", "-m", "viva-engage-tools-update"] in calls
     assert ["git", "pull", "--ff-only"] in calls
     assert ["git", "stash", "pop"] in calls
     assert "force update" in status["status"].lower()

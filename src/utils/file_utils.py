@@ -72,7 +72,7 @@ def create_backup_zip(base_path: str) -> BytesIO:
 
 def get_backup_filename() -> str:
     """Generate a backup filename with timestamp."""
-    return f'jampy-backup-{datetime.now().strftime("%Y%m%d-%H%M%S")}.zip'
+    return f'viva-engage-tools-backup-{datetime.now().strftime("%Y%m%d-%H%M%S")}.zip'
 
 
 def validate_group_handle(handle: str) -> bool:

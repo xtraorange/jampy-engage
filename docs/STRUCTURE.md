@@ -5,7 +5,7 @@
 
 ### **Root Level (Clean & Minimal)**
 ```
-jampy-engage/
+viva-engage-tools/
 ├── run_reports.py          ← Wrapper script for convenience
 ├── README.md
 ├── requirements.txt

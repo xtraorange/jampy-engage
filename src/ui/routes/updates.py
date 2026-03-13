@@ -104,8 +104,8 @@ def init_updates_routes(app, base_path: str):
             try:
                 # stash any local changes (including config) so pull can succeed
                 app.config["update_status"] = "Stashing local modifications..."
-                app.config["update_output"].append("$ git stash push -u -m jampy-update")
-                st = subprocess.run(["git", "stash", "push", "-u", "-m", "jampy-update"], cwd=base_path, capture_output=True, text=True, timeout=30)
+                app.config["update_output"].append("$ git stash push -u -m viva-engage-tools-update")
+                st = subprocess.run(["git", "stash", "push", "-u", "-m", "viva-engage-tools-update"], cwd=base_path, capture_output=True, text=True, timeout=30)
                 if st.stdout:
                     app.config["update_output"].append(st.stdout.strip())
                 if st.stderr:
@@ -174,8 +174,8 @@ def init_updates_routes(app, base_path: str):
             try:
                 # stash any local changes (including config) so pull can succeed
                 app.config["update_status"] = "Stashing local modifications..."
-                app.config["update_output"].append("$ git stash push -u -m jampy-update")
-                st = subprocess.run(["git", "stash", "push", "-u", "-m", "jampy-update"], cwd=base_path, capture_output=True, text=True, timeout=30)
+                app.config["update_output"].append("$ git stash push -u -m viva-engage-tools-update")
+                st = subprocess.run(["git", "stash", "push", "-u", "-m", "viva-engage-tools-update"], cwd=base_path, capture_output=True, text=True, timeout=30)
                 if st.stdout:
                     app.config["update_output"].append(st.stdout.strip())
                 if st.stderr:
