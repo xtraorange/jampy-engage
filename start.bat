@@ -1,63 +1,47 @@
 @echo off
 setlocal EnableDelayedExpansion
-REM Jampy Engage Application Launcher
-REM This script activates the virtual environment and starts the web application
+REM Viva Engage Tools Server Launcher
 
 cd /d "%~dp0"
 
-REM Activate the virtual environment
-call :renderStatus "Activating virtual environment..."
-call .venv\Scripts\activate.bat
+set "ROOT_DIR=%CD%"
+set "INSTALL_SCRIPT=%ROOT_DIR%\scripts\install.ps1"
+set "START_SCRIPT=%ROOT_DIR%\scripts\start.ps1"
+set "VENV_PYTHON=%ROOT_DIR%\.venv\Scripts\python.exe"
 
-REM Check if activation was successful
-if errorlevel 1 (
-    call :renderStatus "Activation failed"
-    echo [ERROR] Could not activate virtual environment
+if not exist "%INSTALL_SCRIPT%" (
+    echo [ERROR] Install script not found: %INSTALL_SCRIPT%
     pause
     exit /b 1
 )
 
-set "JAMPY_SKIP_BROWSER="
-
-REM Start the Flask application inside a restart loop
-:loop
-call :renderStatus "Server Running..."
-python -m src.ui
-
-REM When the server exits, check for restart flag
-if exist restart.flag (
-    set "RESTART_MODE=restart"
-    set /p RESTART_MODE=<restart.flag
-    if "!RESTART_MODE!"=="" set "RESTART_MODE=restart"
-    del restart.flag
-    if /I "!RESTART_MODE!"=="restart:no-browser" (
-        set "JAMPY_SKIP_BROWSER=1"
-    ) else (
-        set "JAMPY_SKIP_BROWSER="
-    )
-
-    if "!JAMPY_SKIP_BROWSER!"=="1" (
-        call :renderStatus "Restarting... (keeping browser in current tab)"
-    ) else (
-        call :renderStatus "Restarting... (launcher will open browser)"
-    )
-
-    timeout /t 1 /nobreak >nul
-    goto loop
+if not exist "%START_SCRIPT%" (
+    echo [ERROR] Start script not found: %START_SCRIPT%
+    pause
+    exit /b 1
 )
 
-REM No restart requested; exit script
-call :renderStatus "Server stopped"
-exit /b
+call :ensureInstalled
+if errorlevel 1 exit /b 1
 
-:renderStatus
-cls
-echo ============================================
-echo   Viva Engage Tools Server
-echo ============================================
-echo   Workspace: %CD%
-echo   UI restart behavior: reconnect current tab
-echo.
-echo Status: %~1
-echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%START_SCRIPT%" -RootDir "%ROOT_DIR%"
+exit /b %errorlevel%
+
+:ensureInstalled
+if exist "%VENV_PYTHON%" goto :eof
+
+echo [INFO] First run detected. Installing dependencies...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_SCRIPT%" -TargetDir "%ROOT_DIR%" -SkipClone
+if errorlevel 1 (
+    echo [ERROR] Automatic setup failed.
+    pause
+    exit /b 1
+)
+
+if not exist "%VENV_PYTHON%" (
+    echo [ERROR] Expected virtual environment was not created.
+    pause
+    exit /b 1
+)
+
 goto :eof

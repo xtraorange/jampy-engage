@@ -7,6 +7,7 @@ import io
 import sys
 import threading
 import socket
+import json
 
 from .utils import setup_flask_app, load_version_info
 from .routes.main import init_main_routes
@@ -71,6 +72,15 @@ def run_app():
     preferred_port = _resolve_ui_port(base)
     port = _find_available_port(preferred_port)
     app_url = f"http://127.0.0.1:{port}"
+    runtime_dir = os.path.join(base, ".runtime")
+    runtime_info_path = os.path.join(runtime_dir, "ui.json")
+
+    try:
+        os.makedirs(runtime_dir, exist_ok=True)
+        with open(runtime_info_path, "w", encoding="utf-8") as runtime_file:
+            json.dump({"port": port, "preferred_port": preferred_port, "url": app_url}, runtime_file)
+    except OSError:
+        pass
 
     if port != preferred_port:
         print(

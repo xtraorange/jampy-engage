@@ -1,6 +1,8 @@
-# Viva Engage Member List Generator
+# Viva Engage Tools
 
-jampy-engage generates Viva Engage membership CSV reports from Oracle data, with optional email delivery.
+Viva Engage Tools generates Viva Engage membership CSV reports from Oracle data, with optional email delivery.
+
+This project is Windows-only.
 
 You can run it in either mode:
 - Web UI (recommended for daily use)
@@ -12,42 +14,20 @@ You can run it in either mode:
 
 Windows (PowerShell):
 ```powershell
-irm https://raw.githubusercontent.com/xtraorange/jampy-engage/main/install.ps1 | iex
-```
-
-macOS/Linux (bash):
-```bash
-curl -fsSL https://raw.githubusercontent.com/xtraorange/jampy-engage/main/install.sh | bash
+irm https://raw.githubusercontent.com/xtraorange/jampy-engage/main/scripts/install.ps1 | iex
 ```
 
 ### Manual install
 
 1. Install Python 3.10+
-2. Clone this repository:
+2. Clone or download this repository:
 ```bash
 git clone https://github.com/xtraorange/jampy-engage.git
 cd jampy-engage
 ```
-3. Create and activate a virtual environment:
-```bash
-# Windows
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+3. Start the app by double-clicking start.bat.
 
-# macOS/Linux
-python3 -m venv .venv
-source .venv/bin/activate
-```
-4. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-5. Start the app:
-```bash
-python run_reports.py
-```
-
-On Windows, you can also use start.ps1 or start.bat.
+On first run, start.bat will automatically create the virtual environment and install dependencies if needed.
 
 ## Web UI Overview
 
@@ -132,7 +112,7 @@ Additional pages are available from Settings:
 
 Run CLI mode:
 ```bash
-python run_reports.py --cli
+.venv\Scripts\python.exe run_reports.py --cli
 ```
 
 Examples:

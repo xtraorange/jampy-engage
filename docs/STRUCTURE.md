@@ -9,8 +9,9 @@ jampy-engage/
 ├── run_reports.py          ← Wrapper script for convenience
 ├── README.md
 ├── requirements.txt
-├── start.bat / start.ps1
-├── install.ps1 / install.sh
+├── start.bat               ← Single visible Windows launcher
+├── scripts/
+│   └── install.ps1         ← Internal Windows bootstrap/install script
 ├── .git/
 ├── .venv/
 ├── .gitignore
@@ -117,6 +118,7 @@ src/
 - Flask now finds templates at `src/ui/templates/`
 - Tests are co-located with source code for better discoverability
 - Documentation/meta-files organized in `docs/`
+- Windows users only need to double-click `start.bat`; first-run bootstrap is handled automatically
 
 ## 🚀 **Entry Points**
 
