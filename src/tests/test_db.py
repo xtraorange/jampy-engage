@@ -1,3 +1,5 @@
+import os
+
 from src.db import DatabaseExecutor
 
 
@@ -59,3 +61,41 @@ def test_username_domain(tmp_path, monkeypatch):
     execu = DummyExec()
     # provide dummy job numbering but they are unused in this unit test
     process_group(group, cfg, execu, tracker, should_email=False, job_num=1, job_total=1)
+
+
+def test_process_group_sanitizes_output_filename(tmp_path):
+    from src.generate_reports import process_group
+    from src.group import Group
+
+    class DummyExec:
+        def run_query(self, q):
+            return [{"USERNAME": "bob"}]
+
+        def write_csv(self, rows, headers, out):
+            filename = os.path.basename(out)
+            assert "/" not in filename
+            assert "\\" not in filename
+            assert ":" not in filename
+            assert "?" not in filename
+            assert "*" not in filename
+            assert '"' not in filename
+            assert "<" not in filename
+            assert ">" not in filename
+            assert "|" not in filename
+
+    tracker = type("T", (), {"update": lambda self, h, m: None, "increment": lambda self, h: None})()
+    cfg = {"output_dir": str(tmp_path)}
+
+    gfolder = tmp_path / "gslash"
+    gfolder.mkdir()
+    with open(gfolder / "group.yaml", "w") as f:
+        import yaml
+
+        yaml.safe_dump({"handle": "us_south_gms_mms_viva_engage", "display_name": "US South GMs/MMs"}, f)
+    with open(gfolder / "query.sql", "w") as f:
+        f.write("select")
+
+    group = Group(str(gfolder))
+    execu = DummyExec()
+    csv_path = process_group(group, cfg, execu, tracker, should_email=False, job_num=1, job_total=1)
+    assert csv_path

@@ -1,5 +1,6 @@
 """Core report generation service."""
 import os
+import re
 from datetime import datetime
 from time import perf_counter
 from typing import List, Optional
@@ -8,6 +9,46 @@ from ..config import load_general_config
 from ..db import DatabaseExecutor, ProgressTracker
 from ..group import Group
 from .email_service import EmailService
+
+
+_INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
+
+
+def _safe_filename_component(value: str, default: str = "unnamed") -> str:
+    """Normalize user-facing text into a Windows-safe filename component."""
+    cleaned = _INVALID_FILENAME_CHARS.sub("-", str(value or "").strip())
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+    return cleaned or default
+
+
+def _build_output_filename(folder: str, handle: str, display_name: str, date_str: str) -> str:
+    """Build a safe CSV filename while keeping full path under common Windows limits."""
+    safe_handle = _safe_filename_component(handle, default="group")
+    safe_display = _safe_filename_component(display_name or handle, default=safe_handle)
+    max_path = 240  # keep headroom under traditional Windows MAX_PATH
+
+    def _compose(h: str, d: str) -> str:
+        return f"{h} ({d}) - {date_str}.csv"
+
+    fname = _compose(safe_handle, safe_display)
+    fullpath = os.path.join(folder, fname)
+    if len(fullpath) <= max_path:
+        return fname
+
+    overflow = len(fullpath) - max_path
+    if overflow > 0 and len(safe_display) > 12:
+        trim = min(overflow, len(safe_display) - 12)
+        safe_display = safe_display[:-trim].rstrip(" ._-") or safe_display[:12]
+
+    fname = _compose(safe_handle, safe_display)
+    fullpath = os.path.join(folder, fname)
+    overflow = len(fullpath) - max_path
+    if overflow > 0 and len(safe_handle) > 12:
+        trim = min(overflow, len(safe_handle) - 12)
+        safe_handle = safe_handle[:-trim].rstrip(" ._-") or safe_handle[:12]
+
+    fname = _compose(safe_handle, safe_display)
+    return fname
 
 
 class ReportService:
@@ -139,7 +180,7 @@ class ReportService:
             os.makedirs(folder, exist_ok=True)
 
             date_str = datetime.now().strftime("%y-%m-%d")
-            fname = f"{handle} ({group.display_name}) - {date_str}.csv"
+            fname = _build_output_filename(folder, handle, group.display_name, date_str)
             fullpath = os.path.join(folder, fname)
 
             # Write CSV
