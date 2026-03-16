@@ -137,14 +137,47 @@
       renderSuggestions('');
     }
 
+    function focusNextTabStop(current) {
+      var focusable = Array.prototype.slice.call(document.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )).filter(function (el) {
+        return el.offsetParent !== null;
+      });
+      var index = focusable.indexOf(current);
+      if (index >= 0 && index + 1 < focusable.length) {
+        focusable[index + 1].focus();
+      }
+    }
+
     if (addButton) {
       addButton.addEventListener('click', submitInputTag);
     }
 
     input.addEventListener('keydown', function (event) {
-      if (event.key !== 'Enter') return;
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitInputTag();
+        return;
+      }
+
+      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+
+      if (suggestions.style.display === 'none') {
+        return;
+      }
+
+      var firstSuggestion = suggestions.querySelector('a[data-tag]');
+      if (!firstSuggestion) {
+        return;
+      }
+
       event.preventDefault();
-      submitInputTag();
+      addTag(firstSuggestion.getAttribute('data-tag'));
+      input.value = '';
+      renderSuggestions('');
+      focusNextTabStop(input);
     });
 
     input.addEventListener('input', function (event) {

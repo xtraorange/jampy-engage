@@ -95,7 +95,7 @@
         <div class="mb-3">
           <label class="form-label">Tags</label>
           <div id="tag-chip-container" class="mb-2 d-flex flex-wrap gap-1"></div>
-          <input type="text" class="form-control" id="tag_input" placeholder="Search or add a tag...">
+          <input type="text" class="form-control" id="tag_input" placeholder="Search or add a tag..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true">
           <div id="tag-suggestions" class="list-group mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
           <small class="form-text text-muted">Press Enter to add a new tag if no suggestion matches.</small>
         </div>
@@ -135,9 +135,6 @@
         <!-- Query Builder view -->
         <div id="query-builder-view">
           <div id="builder-summary" class="builder-summary-box mb-3">No query builder parameters selected yet.</div>
-          <button type="button" class="btn btn-sm btn-outline-primary" onclick="editQueryBuilder()">
-            🔨 Open Query Builder
-          </button>
         </div>
         <!-- Manual SQL view -->
         <div id="query-manual-view" style="display:none;">
@@ -150,8 +147,9 @@
           </div>
         </div>
       </div>
-      <div id="query-view-footer" class="card-footer d-flex justify-content-end">
-        <button type="button" class="btn btn-primary" id="query-edit-action-btn" onclick="openQueryEdit()">{{ 'Edit Query' if config.query_mode == 'manual' else 'Edit Query in Manual SQL Mode' }}</button>
+      <div id="query-view-footer" class="card-footer d-flex justify-content-between align-items-center">
+        <button type="button" class="btn btn-sm btn-outline-primary" id="query-test-action-btn" onclick="openQueryTestModal()" style="display:none;">Test Query</button>
+        <button type="button" class="btn btn-primary" id="query-edit-action-btn" onclick="openQueryEdit()">Edit Query</button>
       </div>
     </div>
 
@@ -173,6 +171,45 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<div class="modal fade" id="group-query-test-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Test Query Results</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <span id="group-query-test-count" class="badge bg-secondary">Count: --</span>
+          <span id="group-query-test-page" class="text-muted small"></span>
+        </div>
+        <div id="group-query-test-error" class="alert alert-danger" style="display:none;"></div>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped align-middle">
+            <thead>
+              <tr>
+                <th style="width: 35%;">Name</th>
+                <th style="width: 35%;">Title</th>
+                <th style="width: 30%;">Email</th>
+              </tr>
+            </thead>
+            <tbody id="group-query-test-rows">
+              <tr><td colspan="3" class="text-muted">Run a test query to view results.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <div>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="group-query-test-prev">Previous</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="group-query-test-next">Next</button>
+        </div>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -279,6 +316,9 @@
   let queryEditReturnMode = null;
   let tagSelector = null;
   let copyModal = null;
+  let queryTestModal = null;
+  let queryTestPage = 1;
+  const QUERY_TEST_PAGE_SIZE = 100;
   let selectedCopySource = null;
 
   /* ---- utility ---- */
@@ -570,9 +610,7 @@
   function renderQueryEditAction() {
     const btn = document.getElementById('query-edit-action-btn');
     if (!btn) return;
-    btn.textContent = currentQueryMode === 'builder'
-      ? 'Edit Query in Manual SQL Mode'
-      : 'Edit Query';
+    btn.textContent = 'Edit Query';
   }
 
   function toggleQueryMode() {
@@ -588,17 +626,20 @@
     const builderView = document.getElementById('query-builder-view');
     const manualView  = document.getElementById('query-manual-view');
     const queryViewFooter = document.getElementById('query-view-footer');
+    const testQueryBtn = document.getElementById('query-test-action-btn');
     const queryEditCard = document.getElementById('query-edit-card');
     if (currentQueryMode === 'builder') {
       builderView.style.display = '';
       manualView.style.display  = 'none';
       if (queryViewFooter) queryViewFooter.style.display = '';
+      if (testQueryBtn) testQueryBtn.style.display = '';
       // If query edit card is open, close it — builder edits go via query builder app
       if (queryEditCard && queryEditCard.style.display !== 'none') cancelQueryEdit();
     } else {
       builderView.style.display = 'none';
       manualView.style.display  = '';
       if (queryViewFooter) queryViewFooter.style.display = '';
+      if (testQueryBtn) testQueryBtn.style.display = 'none';
     }
     renderQueryEditAction();
   }
@@ -672,46 +713,14 @@
 
   /* ---- query card ---- */
   async function openQueryEdit() {
-    const editQueryField = document.getElementById('edit-query');
     if (currentQueryMode === 'builder') {
-      const builderPayloadRaw = document.getElementById('query_builder_json').value || '{}';
-      let builderPayload = {};
-      try {
-        builderPayload = JSON.parse(builderPayloadRaw);
-      } catch (_) {
-        alert('Unable to read saved Query Builder parameters.');
-        return;
-      }
-
-      if (!builderPayload || (Array.isArray(builderPayload.blocks) && builderPayload.blocks.length === 0) || (!Array.isArray(builderPayload.blocks) && Object.keys(builderPayload).length === 0)) {
-        alert('Save Query Builder parameters first, then convert them to manual SQL.');
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/generate-builder-sql', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(builderPayload),
-        });
-        const data = await response.json();
-        if (!response.ok || !data.sql) {
-          alert(data.error || 'Unable to generate SQL from Query Builder parameters.');
-          return;
-        }
-
-        queryEditReturnMode = 'builder';
-        currentQueryMode = 'manual';
-        document.getElementById('query_mode').value = 'manual';
-        editQueryField.value = data.sql;
-      } catch (e) {
-        alert('Error generating SQL from Query Builder parameters: ' + e);
-        return;
-      }
-    } else {
-      queryEditReturnMode = null;
-      editQueryField.value = document.getElementById('query').value;
+      editQueryBuilder();
+      return;
     }
+
+    const editQueryField = document.getElementById('edit-query');
+    queryEditReturnMode = null;
+    editQueryField.value = document.getElementById('query').value;
 
     document.getElementById('query-view-card').style.display = 'none';
     document.getElementById('query-edit-card').style.display = '';
@@ -844,6 +853,111 @@
     sessionStorage.setItem('query_builder_initial_params', document.getElementById('query_builder_json').value || '{}');
     sessionStorage.setItem('return_to', window.location.pathname);
     window.location.href = '/query-builder';
+  }
+
+  function renderQueryTestRows(rows) {
+    const body = document.getElementById('group-query-test-rows');
+    if (!body) return;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      body.innerHTML = '<tr><td colspan="3" class="text-muted">No rows found for this page.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.name || '') || '<span class="text-muted">(Unknown)</span>'}</td>
+        <td>${escapeHtml(row.title || '') || '<span class="text-muted">(No title)</span>'}</td>
+        <td class="font-monospace">${escapeHtml(row.email || '')}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function fetchBuilderSqlForTest() {
+    const builderPayloadRaw = document.getElementById('query_builder_json').value || '{}';
+    let builderPayload = {};
+    try {
+      builderPayload = JSON.parse(builderPayloadRaw);
+    } catch (_) {
+      throw new Error('Unable to read saved Query Builder parameters.');
+    }
+
+    if (!builderPayload || (Array.isArray(builderPayload.blocks) && builderPayload.blocks.length === 0) || (!Array.isArray(builderPayload.blocks) && Object.keys(builderPayload).length === 0)) {
+      throw new Error('No query builder configuration has been saved yet.');
+    }
+
+    const response = await fetch('/api/generate-builder-sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(builderPayload),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.sql) {
+      throw new Error(data.error || 'Unable to generate SQL from Query Builder parameters.');
+    }
+    return data.sql;
+  }
+
+  async function loadGroupQueryTestPage(page) {
+    const countChip = document.getElementById('group-query-test-count');
+    const pageText = document.getElementById('group-query-test-page');
+    const errorBox = document.getElementById('group-query-test-error');
+    const prev = document.getElementById('group-query-test-prev');
+    const next = document.getElementById('group-query-test-next');
+
+    if (errorBox) {
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+    }
+    if (countChip) {
+      countChip.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Count: loading...';
+    }
+    if (pageText) {
+      pageText.textContent = 'Loading...';
+    }
+
+    try {
+      const sql = await fetchBuilderSqlForTest();
+      const response = await fetch('/api/test-query-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql, page, page_size: QUERY_TEST_PAGE_SIZE }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Unable to test query.');
+      }
+
+      queryTestPage = data.page || page;
+      renderQueryTestRows(data.rows || []);
+      if (countChip) {
+        countChip.textContent = `Count: ${data.count ?? 0}`;
+      }
+      if (pageText) {
+        pageText.textContent = `Page ${data.page} of ${data.total_pages}`;
+      }
+      if (prev) prev.disabled = (data.page || 1) <= 1;
+      if (next) next.disabled = (data.page || 1) >= (data.total_pages || 1);
+    } catch (error) {
+      renderQueryTestRows([]);
+      if (countChip) countChip.textContent = 'Count: --';
+      if (pageText) pageText.textContent = '';
+      if (errorBox) {
+        errorBox.textContent = String(error);
+        errorBox.style.display = '';
+      }
+      if (prev) prev.disabled = true;
+      if (next) next.disabled = true;
+    }
+  }
+
+  async function openQueryTestModal() {
+    if (currentQueryMode !== 'builder') return;
+    if (!queryTestModal) {
+      queryTestModal = new bootstrap.Modal(document.getElementById('group-query-test-modal'));
+    }
+    queryTestPage = 1;
+    queryTestModal.show();
+    await loadGroupQueryTestPage(1);
   }
 
   /* ---- tags ---- */
@@ -982,7 +1096,7 @@
 
   /* ---- init ---- */
   window.addEventListener('load', () => {
-    // Set up query card footer visibility (Edit Query button only appears in manual mode)
+    // Set up query card footer visibility/actions for current query mode.
     applyQueryViewMode();
     renderQueryModeToggle();
     updateBuilderSummary();
@@ -1075,6 +1189,21 @@
     const copySaveButton = document.getElementById('copy-query-config-save');
     if (copySaveButton) {
       copySaveButton.addEventListener('click', saveCopiedQueryConfig);
+    }
+
+    const prevTestButton = document.getElementById('group-query-test-prev');
+    if (prevTestButton) {
+      prevTestButton.addEventListener('click', async () => {
+        if (queryTestPage <= 1) return;
+        await loadGroupQueryTestPage(queryTestPage - 1);
+      });
+    }
+
+    const nextTestButton = document.getElementById('group-query-test-next');
+    if (nextTestButton) {
+      nextTestButton.addEventListener('click', async () => {
+        await loadGroupQueryTestPage(queryTestPage + 1);
+      });
     }
   });
 </script>

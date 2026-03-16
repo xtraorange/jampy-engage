@@ -676,6 +676,8 @@ def test_query_builder_routes(client, monkeypatch):
     response = client.get("/query-builder")
     assert response.status_code == 200
     assert b"Query Builder" in response.data
+    assert b"btn-test-query-modal" in response.data
+    assert b"query-test-modal" in response.data
     assert b"attr-bu-code-tags" in response.data
     assert b"attr-company-tags" in response.data
     assert b"attr-tree-branch-tags" in response.data
@@ -747,6 +749,9 @@ def test_query_builder_routes(client, monkeypatch):
     response = client.post("/api/test-query", json={"sql": "SELECT * FROM dual"})
     assert response.status_code in [200, 500]
 
+    response = client.post("/api/test-query-details", json={"sql": "SELECT USERNAME FROM dual", "page": 1, "page_size": 100})
+    assert response.status_code in [200, 500]
+
 
 def test_group_edit_hides_builder_summary_when_override_exists(client, app_workspace):
     _, base = app_workspace
@@ -778,8 +783,11 @@ def test_group_edit_renders_saved_builder_summary_without_navigation(client, app
     rv = client.get("/group/summary_group")
     assert rv.status_code == 200
     assert b"Query Configuration" in rv.data
-    assert b"Open Query Builder" in rv.data
-    assert b"Edit Query in Manual SQL Mode" in rv.data
+    assert b"Open Query Builder" not in rv.data
+    assert b"query-test-action-btn" in rv.data
+    assert b"group-query-test-modal" in rv.data
+    assert b"Edit Query" in rv.data
+    assert b"Edit Query in Manual SQL Mode" not in rv.data
     assert b"Group Settings" in rv.data
 
 

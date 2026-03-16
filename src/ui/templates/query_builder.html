@@ -73,6 +73,7 @@
         </div>
         <div class="card-body">
           <button type="button" id="btn-accept-sql" class="btn btn-success w-100 mb-2" style="display: none;">Accept This Query</button>
+          <button type="button" id="btn-test-query-modal" class="btn btn-outline-primary w-100 mb-2" style="display: none;">Test Query</button>
           <button type="button" id="btn-edit-sql" class="btn btn-warning w-100 mb-2">Edit SQL Manually</button>
           <button type="button" id="btn-cancel" class="btn btn-outline-secondary w-100">Cancel</button>
         </div>
@@ -145,6 +146,45 @@
       <button type="button" class="btn btn-outline-secondary" id="role-seed-merge-cancel">Cancel</button>
       <button type="button" class="btn btn-outline-primary" id="role-seed-merge-add">Add to Existing</button>
       <button type="button" class="btn btn-primary" id="role-seed-merge-replace">Replace Existing</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="query-test-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Test Query Results</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <span id="query-test-count" class="badge bg-secondary">Count: --</span>
+          <span id="query-test-page" class="text-muted small"></span>
+        </div>
+        <div id="query-test-error" class="alert alert-danger" style="display:none;"></div>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped align-middle">
+            <thead>
+              <tr>
+                <th style="width: 35%;">Name</th>
+                <th style="width: 35%;">Title</th>
+                <th style="width: 30%;">Email</th>
+              </tr>
+            </thead>
+            <tbody id="query-test-rows">
+              <tr><td colspan="3" class="text-muted">Run a test query to view results.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <div>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="query-test-prev">Previous</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="query-test-next">Next</button>
+        </div>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+      </div>
     </div>
   </div>
 </div>
@@ -242,6 +282,9 @@
     tree_branch: false,
   };
   let roleSeedCounts = {};
+  let queryTestModal = null;
+  let queryTestPage = 1;
+  const QUERY_TEST_PAGE_SIZE = 100;
 
   const ROLE_ATTR_ROWS = [
     { key: 'job_title', label: 'Job Title/Code', attrKey: 'job_titles_display' },
@@ -730,6 +773,13 @@
     const list = document.getElementById(listId);
     if (!input || !list) return;
 
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('data-lpignore', 'true');
+    input.setAttribute('data-1p-ignore', 'true');
+
     input._employeeSearchConfig = {
       list,
       onPick,
@@ -804,12 +854,52 @@
       if (!cfg) return;
       setTimeout(() => { cfg.list.style.display = 'none'; }, 200);
     });
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+      const cfg = input._employeeSearchConfig;
+      if (!cfg || cfg.list.style.display === 'none') {
+        return;
+      }
+      const first = cfg.list.querySelector('a[data-id]');
+      if (!first) {
+        return;
+      }
+
+      event.preventDefault();
+      const person = {
+        id: first.dataset.id,
+        first_name: first.dataset.first,
+        last_name: first.dataset.last,
+        username: first.dataset.username,
+        job_title: first.dataset.jobTitle || '',
+      };
+      cfg.onPick(person);
+      input.value = '';
+      cfg.list.style.display = 'none';
+
+      const focusable = Array.from(document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        .filter((el) => el.offsetParent !== null);
+      const idx = focusable.indexOf(input);
+      if (idx >= 0 && idx + 1 < focusable.length) {
+        focusable[idx + 1].focus();
+      }
+    });
   }
 
   function wireValueSearch(inputId, listId, field, onPick) {
     const input = document.getElementById(inputId);
     const list = document.getElementById(listId);
     if (!input || !list) return;
+
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('data-lpignore', 'true');
+    input.setAttribute('data-1p-ignore', 'true');
 
     input._valueSearchConfig = {
       list,
@@ -873,6 +963,32 @@
       const cfg = input._valueSearchConfig;
       if (!cfg) return;
       setTimeout(() => { cfg.list.style.display = 'none'; }, 200);
+    });
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+      const cfg = input._valueSearchConfig;
+      if (!cfg || cfg.list.style.display === 'none') {
+        return;
+      }
+      const first = cfg.list.querySelector('a[data-value]');
+      if (!first) {
+        return;
+      }
+
+      event.preventDefault();
+      cfg.onPick(first.dataset.value);
+      input.value = '';
+      cfg.list.style.display = 'none';
+
+      const focusable = Array.from(document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        .filter((el) => el.offsetParent !== null);
+      const idx = focusable.indexOf(input);
+      if (idx >= 0 && idx + 1 < focusable.length) {
+        focusable[idx + 1].focus();
+      }
     });
   }
 
@@ -1420,6 +1536,7 @@
   async function updateSQL() {
     const preview = document.getElementById('sql-preview');
     const btnTest = document.getElementById('btn-test-query');
+    const btnTestModal = document.getElementById('btn-test-query-modal');
     const btnAccept = document.getElementById('btn-accept-sql');
     const wholeCount = document.getElementById('whole-query-count');
 
@@ -1430,6 +1547,7 @@
       currentSQL = '';
       preview.value = '';
       btnTest.style.display = 'none';
+      if (btnTestModal) btnTestModal.style.display = 'none';
       btnAccept.style.display = 'none';
       return;
     }
@@ -1446,6 +1564,7 @@
         showDbErrorBanner(data.error);
         preview.value = `Error: ${data.error}`;
         btnTest.style.display = 'none';
+        if (btnTestModal) btnTestModal.style.display = 'none';
         btnAccept.style.display = 'none';
         return;
       }
@@ -1453,11 +1572,13 @@
       currentSQL = data.sql;
       preview.value = currentSQL;
       btnTest.style.display = 'inline-block';
+      if (btnTestModal) btnTestModal.style.display = 'block';
       btnAccept.style.display = 'inline-block';
     } catch (error) {
       showDbErrorBanner(error);
       preview.value = `Error generating SQL: ${error}`;
       btnTest.style.display = 'none';
+      if (btnTestModal) btnTestModal.style.display = 'none';
       btnAccept.style.display = 'none';
     }
   }
@@ -1469,6 +1590,84 @@
       body: JSON.stringify({ sql }),
     });
     return response.json();
+  }
+
+  function renderQueryTestRows(rows) {
+    const body = document.getElementById('query-test-rows');
+    if (!body) return;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      body.innerHTML = '<tr><td colspan="3" class="text-muted">No rows found for this page.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.name || '') || '<span class="text-muted">(Unknown)</span>'}</td>
+        <td>${escapeHtml(row.title || '') || '<span class="text-muted">(No title)</span>'}</td>
+        <td class="font-monospace">${escapeHtml(row.email || '')}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function loadQueryTestPage(page) {
+    if (!currentSQL) return;
+    const countChip = document.getElementById('query-test-count');
+    const pageText = document.getElementById('query-test-page');
+    const errorBox = document.getElementById('query-test-error');
+    const prev = document.getElementById('query-test-prev');
+    const next = document.getElementById('query-test-next');
+
+    if (errorBox) {
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+    }
+    if (countChip) {
+      countChip.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Count: loading...';
+    }
+    if (pageText) {
+      pageText.textContent = 'Loading...';
+    }
+
+    try {
+      const response = await fetch('/api/test-query-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: currentSQL, page, page_size: QUERY_TEST_PAGE_SIZE }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Unable to test query.');
+      }
+
+      queryTestPage = data.page || page;
+      renderQueryTestRows(data.rows || []);
+
+      if (countChip) {
+        countChip.textContent = `Count: ${data.count ?? 0}`;
+      }
+      if (pageText) {
+        pageText.textContent = `Page ${data.page} of ${data.total_pages}`;
+      }
+      if (prev) {
+        prev.disabled = (data.page || 1) <= 1;
+      }
+      if (next) {
+        next.disabled = (data.page || 1) >= (data.total_pages || 1);
+      }
+    } catch (error) {
+      renderQueryTestRows([]);
+      if (countChip) {
+        countChip.textContent = 'Count: --';
+      }
+      if (pageText) {
+        pageText.textContent = '';
+      }
+      if (errorBox) {
+        errorBox.textContent = String(error);
+        errorBox.style.display = '';
+      }
+      if (prev) prev.disabled = true;
+      if (next) next.disabled = true;
+    }
   }
 
   document.getElementById('btn-test-query').addEventListener('click', async () => {
@@ -1492,6 +1691,25 @@
       testResult.innerHTML = `<strong class="text-danger">Error:</strong> ${error}`;
       testResult.style.display = 'block';
     }
+  });
+
+  document.getElementById('btn-test-query-modal').addEventListener('click', async () => {
+    if (!currentSQL) return;
+    if (!queryTestModal) {
+      queryTestModal = new bootstrap.Modal(document.getElementById('query-test-modal'));
+    }
+    queryTestPage = 1;
+    queryTestModal.show();
+    await loadQueryTestPage(1);
+  });
+
+  document.getElementById('query-test-prev').addEventListener('click', async () => {
+    if (queryTestPage <= 1) return;
+    await loadQueryTestPage(queryTestPage - 1);
+  });
+
+  document.getElementById('query-test-next').addEventListener('click', async () => {
+    await loadQueryTestPage(queryTestPage + 1);
   });
 
   document.getElementById('btn-accept-sql').addEventListener('click', () => {
@@ -1883,6 +2101,13 @@
     close.addEventListener('click', closeAll);
     cancel.addEventListener('click', closeAll);
 
+    search.setAttribute('autocomplete', 'off');
+    search.setAttribute('autocapitalize', 'off');
+    search.setAttribute('autocorrect', 'off');
+    search.setAttribute('spellcheck', 'false');
+    search.setAttribute('data-lpignore', 'true');
+    search.setAttribute('data-1p-ignore', 'true');
+
     let timer = null;
     search.addEventListener('input', (event) => {
       const query = (event.target.value || '').trim();
@@ -1943,6 +2168,29 @@
 
     search.addEventListener('blur', () => {
       setTimeout(() => { suggestions.style.display = 'none'; }, 200);
+    });
+
+    search.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+      if (suggestions.style.display === 'none') {
+        return;
+      }
+      const first = suggestions.querySelector('a[data-role-seed-id]');
+      if (!first) {
+        return;
+      }
+
+      event.preventDefault();
+      first.click();
+
+      const focusable = Array.from(document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        .filter((el) => el.offsetParent !== null);
+      const idx = focusable.indexOf(search);
+      if (idx >= 0 && idx + 1 < focusable.length) {
+        focusable[idx + 1].focus();
+      }
     });
 
     apply.addEventListener('click', async () => {

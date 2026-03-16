@@ -10,6 +10,41 @@ from ...sql_builder import generate_safe_hierarchy_sql
 from ...db import DatabaseExecutor
 
 
+def _extract_count_value(row) -> int:
+    """Extract integer count from dict/tuple DB rows with varying key names."""
+    if not row:
+        return 0
+    first = row[0]
+    if isinstance(first, dict):
+        for key in ("COUNT(*)", "CNT", "count", "count(*)", "cnt"):
+            if key in first:
+                try:
+                    return int(first[key])
+                except (TypeError, ValueError):
+                    return 0
+        try:
+            return int(next(iter(first.values())))
+        except Exception:
+            return 0
+    try:
+        return int(first[0])
+    except Exception:
+        return 0
+
+
+def _row_value(row, key: str, fallback_index: int = 0):
+    """Get value from dict/tuple row with a case-insensitive key fallback."""
+    if isinstance(row, dict):
+        key_l = key.lower()
+        for candidate, value in row.items():
+            if str(candidate).lower() == key_l:
+                return value
+        return None
+    if isinstance(row, (list, tuple)) and len(row) > fallback_index:
+        return row[fallback_index]
+    return None
+
+
 def _single_or_in_condition(column: str, values: list[str]) -> str:
     if not values:
         return ""
@@ -287,10 +322,77 @@ def init_api_routes(app, base_path: str):
             # Count records
             count_sql = f"SELECT COUNT(*) FROM ({sql})"
             result = executor.run_query(count_sql)
-            count = result[0]["COUNT(*)"] if result else 0
+            count = _extract_count_value(result)
             executor.close()
 
             return jsonify({"count": count})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @api_bp.route("/api/test-query-details", methods=["POST"])
+    def test_query_details():
+        """Return count and paginated rows (email/name/title) for a query."""
+        try:
+            cfg = config_service.load_general_config()
+            data = request.get_json(silent=True) or {}
+            sql = str(data.get("sql", "")).strip()
+            if not sql:
+                return jsonify({"error": "No SQL provided"}), 400
+
+            try:
+                page = max(int(data.get("page", 1)), 1)
+            except (TypeError, ValueError):
+                page = 1
+
+            try:
+                page_size = int(data.get("page_size", 100))
+            except (TypeError, ValueError):
+                page_size = 100
+            page_size = min(max(page_size, 1), 200)
+
+            offset = (page - 1) * page_size
+
+            executor = DatabaseExecutor(cfg.get("oracle_tns"))
+
+            base_users_sql = f"SELECT DISTINCT USERNAME FROM ({sql})"
+            count_sql = f"SELECT COUNT(*) AS CNT FROM ({base_users_sql})"
+            total_count = _extract_count_value(executor.run_query(count_sql))
+
+            paged_sql = f"""
+            SELECT base.USERNAME AS EMAIL,
+                   NVL(emp.FIRST_NAME, '') AS FIRST_NAME,
+                   NVL(emp.LAST_NAME, '') AS LAST_NAME,
+                   NVL(emp.JOB_TITLE, '') AS JOB_TITLE
+            FROM ({base_users_sql}) base
+            LEFT JOIN omsadm.employee_mv emp
+              ON UPPER(emp.USERNAME) = UPPER(base.USERNAME)
+            ORDER BY NVL(emp.LAST_NAME, 'ZZZZZZ'), NVL(emp.FIRST_NAME, 'ZZZZZZ'), base.USERNAME
+            OFFSET {offset} ROWS FETCH NEXT {page_size} ROWS ONLY
+            """
+            records = executor.run_query(paged_sql)
+            executor.close()
+
+            rows = []
+            for row in records:
+                email = str(_row_value(row, "EMAIL", 0) or "")
+                first = str(_row_value(row, "FIRST_NAME", 1) or "").strip()
+                last = str(_row_value(row, "LAST_NAME", 2) or "").strip()
+                title = str(_row_value(row, "JOB_TITLE", 3) or "").strip()
+                full_name = " ".join(part for part in (first, last) if part).strip()
+                rows.append({
+                    "email": email,
+                    "name": full_name,
+                    "title": title,
+                })
+
+            total_pages = max((total_count + page_size - 1) // page_size, 1)
+            return jsonify({
+                "count": total_count,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
+                "rows": rows,
+            })
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
