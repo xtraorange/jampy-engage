@@ -186,5 +186,6 @@ config/email_template_override.yaml
 config/stats.yaml
 groups/*/
 output/
+temp/
 restart.flag
 error.log

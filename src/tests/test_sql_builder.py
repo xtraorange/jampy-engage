@@ -233,3 +233,124 @@ def test_block_builder_ignores_empty_hierarchy_by_role_block():
     )
     assert "alice" in sql
     assert "-- Block 1: By Role (skipped: no qualifying selections)" in sql
+
+
+def test_include_root_by_default_unions_root_back_when_filters_present_by_person():
+    sql = generate_hierarchy_sql(
+        mode="by_person",
+        persons=[{"person_username": "jsmith"}],
+        filter_bu_codes=["BU1"],
+    )
+    assert "UNION" in sql
+    assert "USERNAME = 'jsmith'" in sql
+    assert "cte.BU_CODE IN ('BU1')" in sql
+
+
+def test_include_root_false_does_not_union_root_back_by_person():
+    sql = generate_hierarchy_sql(
+        mode="by_person",
+        persons=[{"person_username": "jsmith"}],
+        filter_bu_codes=["BU1"],
+        include_root=False,
+    )
+    assert "cte.BU_CODE IN ('BU1')" in sql
+    assert "cte.HIER_LEVEL > 1" in sql
+    assert "UNION" not in sql
+
+
+def test_include_root_false_excludes_root_even_without_filters():
+    # Root should be excluded regardless of whether filters are present
+    sql = generate_hierarchy_sql(
+        mode="by_person",
+        persons=[{"person_username": "jsmith"}],
+        include_root=False,
+    )
+    assert "cte.HIER_LEVEL > 1" in sql
+    assert "UNION" not in sql
+
+
+def test_include_root_false_excludes_root_even_without_filters_by_role():
+    sql = generate_hierarchy_sql(
+        mode="by_role",
+        attributes_job_code="000545",
+        include_root=False,
+    )
+    assert "cte.HIER_LEVEL > 1" in sql
+    assert "UNION" not in sql
+
+
+def test_include_root_true_readds_root_for_direct_reports_only_by_person():
+    sql = generate_hierarchy_sql(
+        mode="by_person",
+        persons=[{"person_username": "jsmith"}],
+        direct_reports_only=True,
+        include_root=True,
+    )
+    assert "SUPERVISOR_ID IN" in sql
+    assert "UNION" in sql
+    assert "USERNAME = 'jsmith'" in sql
+
+
+def test_include_root_false_keeps_direct_reports_only_without_root_union():
+    sql = generate_hierarchy_sql(
+        mode="by_person",
+        persons=[{"person_username": "jsmith"}],
+        direct_reports_only=True,
+        include_root=False,
+    )
+    assert "SUPERVISOR_ID IN" in sql
+    assert "UNION" not in sql
+
+
+def test_include_root_by_default_unions_root_back_when_filters_present_by_role():
+    sql = generate_hierarchy_sql(
+        mode="by_role",
+        attributes_job_code="000545",
+        filter_bu_codes=["BU1"],
+    )
+    assert "UNION" in sql
+    assert "JOB_CODE = '000545'" in sql
+    assert "cte.BU_CODE IN ('BU1')" in sql
+
+
+def test_include_root_no_union_when_no_filters():
+    # Without filters, the root is naturally included — no UNION needed
+    sql = generate_hierarchy_sql(
+        mode="by_person",
+        persons=[{"person_username": "jsmith"}],
+    )
+    assert "UNION" not in sql
+
+
+def test_block_builder_include_root_respected_for_hierarchy_by_person():
+    sql_with = generate_safe_hierarchy_sql(
+        blocks=[{
+            "type": "hierarchy_by_person",
+            "persons": [{"person_username": "jsmith"}],
+            "include_root": True,
+            "filters": {"bu_codes": ["BU1"]},
+        }]
+    )
+    sql_without = generate_safe_hierarchy_sql(
+        blocks=[{
+            "type": "hierarchy_by_person",
+            "persons": [{"person_username": "jsmith"}],
+            "include_root": False,
+            "filters": {"bu_codes": ["BU1"]},
+        }]
+    )
+    assert "UNION" in sql_with
+    assert "UNION" not in sql_without
+
+
+def test_block_builder_include_root_defaults_true_when_absent():
+    # Old blocks without include_root should behave as if include_root=True
+    sql = generate_safe_hierarchy_sql(
+        blocks=[{
+            "type": "hierarchy_by_role",
+            "attributes": {"job_code": "000545"},
+            "filters": {"bu_codes": ["BU1"]},
+        }]
+    )
+    assert "UNION" in sql
+    assert "JOB_CODE = '000545'" in sql

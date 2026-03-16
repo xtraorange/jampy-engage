@@ -365,6 +365,7 @@
         persons: [],
         exclude_root: false,
         direct_reports_only: false,
+        include_root: true,
         filters: defaultFilters(),
         last_count: null,
       };
@@ -384,6 +385,7 @@
           department_ids: [],
         },
         direct_reports_only: false,
+        include_root: true,
         root_preview_count: 0,
         filters: defaultFilters(),
         last_count: null,
@@ -589,6 +591,7 @@
       }));
       payload.exclude_root = !!block.exclude_root;
       payload.direct_reports_only = !!block.direct_reports_only;
+      payload.include_root = block.include_root !== false;
     }
 
     if (block.type === 'hierarchy_by_role') {
@@ -603,6 +606,7 @@
         department_ids: attrs.department_ids || [],
       };
       payload.direct_reports_only = !!block.direct_reports_only;
+      payload.include_root = block.include_root !== false;
     }
 
     if (block.type === 'manual_individuals') {
@@ -1193,6 +1197,10 @@
             <input class="form-check-input" type="checkbox" id="person-direct-reports-only" ${block.direct_reports_only ? 'checked' : ''}>
             <label class="form-check-label" for="person-direct-reports-only">Only direct reports</label>
           </div>
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="person-include-root" ${block.include_root !== false ? 'checked' : ''}>
+            <label class="form-check-label" for="person-include-root">Include root hierarchy user in results</label>
+          </div>
         </div>
         ${renderFiltersEditor(block)}
       `;
@@ -1235,9 +1243,15 @@
           <input type="text" class="form-control" id="attr-tree-branch" placeholder="Type to search...">
           <div id="attr-tree-branch-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
         </div>
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="role-direct-reports-only" ${block.direct_reports_only ? 'checked' : ''}>
-          <label class="form-check-label" for="role-direct-reports-only">Only direct reports</label>
+        <div class="mb-3">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="role-direct-reports-only" ${block.direct_reports_only ? 'checked' : ''}>
+            <label class="form-check-label" for="role-direct-reports-only">Only direct reports</label>
+          </div>
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="role-include-root" ${block.include_root !== false ? 'checked' : ''}>
+            <label class="form-check-label" for="role-include-root">Include root hierarchy user in results</label>
+          </div>
         </div>
         <div class="card border-light bg-light mb-3">
           <div class="card-body py-2">
@@ -1358,6 +1372,7 @@
     function sync() {
       block.exclude_root = document.getElementById('person-exclude-root').checked;
       block.direct_reports_only = document.getElementById('person-direct-reports-only').checked;
+      block.include_root = document.getElementById('person-include-root').checked;
       markDirty();
       renderBlocksList();
       updateSQL();
@@ -1383,6 +1398,7 @@
 
     document.getElementById('person-exclude-root').addEventListener('change', sync);
     document.getElementById('person-direct-reports-only').addEventListener('change', sync);
+    document.getElementById('person-include-root').addEventListener('change', sync);
     bindFilterEditor(block);
   }
 
@@ -1505,6 +1521,13 @@
 
     document.getElementById('role-direct-reports-only').addEventListener('change', () => {
       block.direct_reports_only = document.getElementById('role-direct-reports-only').checked;
+      markDirty();
+      renderBlocksList();
+      updateSQL();
+    });
+
+    document.getElementById('role-include-root').addEventListener('change', () => {
+      block.include_root = document.getElementById('role-include-root').checked;
       markDirty();
       renderBlocksList();
       updateSQL();

@@ -94,6 +94,7 @@ def generate_hierarchy_sql(
     filter_full_part_time: str = None,
     exclude_root: bool = False,
     direct_reports_only: bool = False,
+    include_root: bool = True,
 ) -> str:
     """
     Generate a hierarchy query. 
@@ -302,7 +303,8 @@ WHERE status_code != 'T'
        BU_CODE,
        COMPANY,
        TREE_BRANCH,
-       FULL_PART_TIME
+       FULL_PART_TIME,
+       LEVEL AS HIER_LEVEL
 FROM omsadm.employee_mv
 START WITH {person_where}
 CONNECT BY PRIOR EMPLOYEE_ID = SUPERVISOR_ID
@@ -318,7 +320,8 @@ AND status_code != 'T'{connect_by_exclude}""")
        BU_CODE,
        COMPANY,
        TREE_BRANCH,
-       FULL_PART_TIME
+       FULL_PART_TIME,
+       LEVEL AS HIER_LEVEL
 FROM omsadm.employee_mv
     START WITH {root_where}
 CONNECT BY PRIOR EMPLOYEE_ID = SUPERVISOR_ID
@@ -360,12 +363,41 @@ AND status_code != 'T'{f" AND USERNAME <> '{person_username}'" if mode=='by_pers
             filter_where_parts.append(f"cte.EMPLOYEE_ID <> '{person.get('person_id')}'")
 
     
+    # When include_root is False, exclude LEVEL 1 rows (the START WITH roots)
+    # regardless of filters. Only applicable to CONNECT BY queries.
+    if not include_root and not direct_reports_only:
+        filter_where_parts.append("cte.HIER_LEVEL > 1")
+
     where_clause = ""
     if filter_where_parts:
         where_clause = "\nWHERE " + "\n  AND ".join(filter_where_parts)
     
     base_query = f"""SELECT cte.USERNAME
 FROM ({hierarchy_sql}) cte{where_clause}"""
+
+    union_parts = [base_query]
+
+    # When include_root is True, explicitly UNION back the root person(s) whenever
+    # they may be missing from base_query:
+    # - filters can exclude roots
+    # - direct_reports_only naturally excludes roots
+    if include_root and (filter_where_parts or direct_reports_only) and not exclude_root:
+        if mode == 'by_person':
+            root_conds = []
+            for person in persons:
+                if person.get('person_username'):
+                    root_conds.append(f"USERNAME = '{person['person_username']}'")
+                elif person.get('person_id'):
+                    root_conds.append(f"EMPLOYEE_ID = '{person['person_id']}'")
+            if root_conds:
+                union_parts.append(f"""SELECT USERNAME
+FROM omsadm.employee_mv
+WHERE status_code != 'T'
+  AND ({' OR '.join(root_conds)})""")
+        else:  # by_role / by_attributes
+            union_parts.append(f"""SELECT USERNAME
+FROM omsadm.employee_mv
+WHERE {root_where}""")
 
     if additional_people:
         addition_conditions = []
@@ -374,20 +406,19 @@ FROM ({hierarchy_sql}) cte{where_clause}"""
                 addition_conditions.append(f"USERNAME = '{person.get('person_username')}'")
             elif person.get("person_id"):
                 addition_conditions.append(f"EMPLOYEE_ID = '{person.get('person_id')}'")
-
-        additions_query = f"""SELECT USERNAME
+        union_parts.append(f"""SELECT USERNAME
 FROM omsadm.employee_mv
 WHERE status_code != 'T'
-  AND ({' OR '.join(addition_conditions)})"""
+  AND ({' OR '.join(addition_conditions)})""")
 
+    if len(union_parts) == 1:
+        final_query = union_parts[0]
+    else:
+        union_joined = "\nUNION\n".join(union_parts)
         final_query = f"""SELECT DISTINCT merged.USERNAME
 FROM (
-{base_query}
-UNION
-{additions_query}
+{union_joined}
 ) merged"""
-    else:
-        final_query = base_query
     
     return final_query
 
@@ -465,6 +496,7 @@ def _block_to_sql(block: dict) -> str:
             persons=persons,
             exclude_root=bool(block.get("exclude_root")),
             direct_reports_only=bool(block.get("direct_reports_only")),
+            include_root=block.get("include_root", True),
             **filters,
         )
 
@@ -498,6 +530,7 @@ def _block_to_sql(block: dict) -> str:
             attributes_tree_branch=resolved_tree_branches,
             attributes_department_id=resolved_department_ids,
             direct_reports_only=bool(block.get("direct_reports_only")),
+            include_root=block.get("include_root", True),
             **filters,
         )
 
@@ -549,12 +582,10 @@ def generate_blocks_sql(blocks: list) -> str:
     comment_prefix = "\n".join(preamble_comments)
     if comment_prefix:
         comment_prefix += "\n"
-    return f"""SELECT DISTINCT merged.USERNAME
+    union_body = ('\nUNION\n').join(parts)
+    return f"""{comment_prefix}SELECT DISTINCT merged.USERNAME
 FROM (
-{('\nUNION\n').join(parts)}
-) merged""" if not comment_prefix else f"""{comment_prefix}SELECT DISTINCT merged.USERNAME
-FROM (
-{('\nUNION\n').join(parts)}
+{union_body}
 ) merged"""
 
 
