@@ -784,7 +784,37 @@
       list,
       onPick,
       timer: input._employeeSearchConfig ? input._employeeSearchConfig.timer : null,
+      activeSuggestionIndex: -1,
     };
+
+    function setActiveSuggestion(index) {
+      const cfg = input._employeeSearchConfig;
+      if (!cfg) return;
+      cfg.activeSuggestionIndex = index;
+      const items = cfg.list.querySelectorAll('a[data-id]');
+      items.forEach((item, idx) => {
+        item.classList.toggle('active', idx === index);
+      });
+      if (index >= 0 && items[index]) {
+        try { items[index].scrollIntoView({ block: 'nearest' }); } catch (_) {}
+      }
+    }
+
+    function pickEmployeeSuggestion(item) {
+      const cfg = input._employeeSearchConfig;
+      if (!cfg || !item) return;
+      cfg.onPick({
+        id: item.dataset.id,
+        first_name: item.dataset.first,
+        last_name: item.dataset.last,
+        username: item.dataset.username,
+        job_title: item.dataset.jobTitle || '',
+      });
+      input.value = '';
+      cfg.list.style.display = 'none';
+      cfg.activeSuggestionIndex = -1;
+      input.focus();
+    }
 
     if (input.dataset.employeeSearchBound === '1') {
       return;
@@ -797,6 +827,7 @@
       const query = event.target.value.trim();
       clearTimeout(cfg.timer);
       if (query.length < 2) {
+        cfg.activeSuggestionIndex = -1;
         cfg.list.style.display = 'none';
         return;
       }
@@ -813,6 +844,7 @@
           }
 
           if (!Array.isArray(data) || data.length === 0) {
+            cfg.activeSuggestionIndex = -1;
             cfg.list.innerHTML = '<div class="list-group-item text-muted">No results</div>';
             cfg.list.style.display = 'block';
             return;
@@ -825,20 +857,12 @@
             </a>
           `).join('');
 
+          cfg.activeSuggestionIndex = -1;
+
           cfg.list.querySelectorAll('a').forEach(item => {
             item.addEventListener('click', (clickEvent) => {
               clickEvent.preventDefault();
-              const latestCfg = input._employeeSearchConfig;
-              if (!latestCfg) return;
-              latestCfg.onPick({
-                id: item.dataset.id,
-                first_name: item.dataset.first,
-                last_name: item.dataset.last,
-                username: item.dataset.username,
-                job_title: item.dataset.jobTitle || '',
-              });
-              input.value = '';
-              latestCfg.list.style.display = 'none';
+              pickEmployeeSuggestion(item);
             });
           });
 
@@ -852,40 +876,70 @@
     input.addEventListener('blur', () => {
       const cfg = input._employeeSearchConfig;
       if (!cfg) return;
+      cfg.activeSuggestionIndex = -1;
       setTimeout(() => { cfg.list.style.display = 'none'; }, 200);
     });
 
     input.addEventListener('keydown', (event) => {
+      const cfg = input._employeeSearchConfig;
+      if (!cfg) return;
+
+      if (event.key === 'ArrowDown') {
+        if (cfg.list.style.display === 'none') return;
+        const items = cfg.list.querySelectorAll('a[data-id]');
+        if (!items.length) return;
+        event.preventDefault();
+        const next = cfg.activeSuggestionIndex < 0
+          ? 0
+          : Math.min(cfg.activeSuggestionIndex + 1, items.length - 1);
+        setActiveSuggestion(next);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        if (cfg.list.style.display === 'none') return;
+        const items = cfg.list.querySelectorAll('a[data-id]');
+        if (!items.length) return;
+        event.preventDefault();
+        if (cfg.activeSuggestionIndex <= 0) {
+          setActiveSuggestion(-1);
+          const len = String(input.value || '').length;
+          if (typeof input.setSelectionRange === 'function') {
+            input.setSelectionRange(len, len);
+          }
+          return;
+        }
+        setActiveSuggestion(cfg.activeSuggestionIndex - 1);
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        if (cfg.list.style.display === 'none') return;
+        const items = cfg.list.querySelectorAll('a[data-id]');
+        if (!items.length) return;
+        event.preventDefault();
+        const index = cfg.activeSuggestionIndex >= 0 ? cfg.activeSuggestionIndex : 0;
+        pickEmployeeSuggestion(items[index]);
+        return;
+      }
+
       if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
         return;
       }
-      const cfg = input._employeeSearchConfig;
+      if (!String(input.value || '').trim()) {
+        return;
+      }
       if (!cfg || cfg.list.style.display === 'none') {
         return;
       }
-      const first = cfg.list.querySelector('a[data-id]');
-      if (!first) {
+      const items = cfg.list.querySelectorAll('a[data-id]');
+      if (!items.length) {
         return;
       }
 
       event.preventDefault();
-      const person = {
-        id: first.dataset.id,
-        first_name: first.dataset.first,
-        last_name: first.dataset.last,
-        username: first.dataset.username,
-        job_title: first.dataset.jobTitle || '',
-      };
-      cfg.onPick(person);
-      input.value = '';
-      cfg.list.style.display = 'none';
-
-      const focusable = Array.from(document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
-        .filter((el) => el.offsetParent !== null);
-      const idx = focusable.indexOf(input);
-      if (idx >= 0 && idx + 1 < focusable.length) {
-        focusable[idx + 1].focus();
-      }
+      const index = cfg.activeSuggestionIndex >= 0 ? cfg.activeSuggestionIndex : 0;
+      pickEmployeeSuggestion(items[index]);
     });
   }
 
@@ -906,7 +960,31 @@
       field,
       onPick,
       timer: input._valueSearchConfig ? input._valueSearchConfig.timer : null,
+      activeSuggestionIndex: -1,
     };
+
+    function setActiveSuggestion(index) {
+      const cfg = input._valueSearchConfig;
+      if (!cfg) return;
+      cfg.activeSuggestionIndex = index;
+      const items = cfg.list.querySelectorAll('a[data-value]');
+      items.forEach((item, idx) => {
+        item.classList.toggle('active', idx === index);
+      });
+      if (index >= 0 && items[index]) {
+        try { items[index].scrollIntoView({ block: 'nearest' }); } catch (_) {}
+      }
+    }
+
+    function pickValueSuggestion(item) {
+      const cfg = input._valueSearchConfig;
+      if (!cfg || !item) return;
+      cfg.onPick(item.dataset.value);
+      input.value = '';
+      cfg.list.style.display = 'none';
+      cfg.activeSuggestionIndex = -1;
+      input.focus();
+    }
 
     if (input.dataset.valueSearchBound === '1') {
       return;
@@ -919,6 +997,7 @@
       const query = event.target.value.trim();
       clearTimeout(cfg.timer);
       if (query.length < 2) {
+        cfg.activeSuggestionIndex = -1;
         cfg.list.style.display = 'none';
         return;
       }
@@ -935,20 +1014,18 @@
           }
 
           if (!Array.isArray(data) || data.length === 0) {
+            cfg.activeSuggestionIndex = -1;
             cfg.list.innerHTML = '<div class="list-group-item text-muted">No results</div>';
             cfg.list.style.display = 'block';
             return;
           }
 
           cfg.list.innerHTML = data.map(item => `<a href="#" class="list-group-item list-group-item-action" data-value="${item.value}">${item.value}</a>`).join('');
+          cfg.activeSuggestionIndex = -1;
           cfg.list.querySelectorAll('a').forEach(a => {
             a.addEventListener('click', (clickEvent) => {
               clickEvent.preventDefault();
-              const latestCfg = input._valueSearchConfig;
-              if (!latestCfg) return;
-              latestCfg.onPick(a.dataset.value);
-              input.value = '';
-              latestCfg.list.style.display = 'none';
+              pickValueSuggestion(a);
             });
           });
 
@@ -962,33 +1039,70 @@
     input.addEventListener('blur', () => {
       const cfg = input._valueSearchConfig;
       if (!cfg) return;
+      cfg.activeSuggestionIndex = -1;
       setTimeout(() => { cfg.list.style.display = 'none'; }, 200);
     });
 
     input.addEventListener('keydown', (event) => {
+      const cfg = input._valueSearchConfig;
+      if (!cfg) return;
+
+      if (event.key === 'ArrowDown') {
+        if (cfg.list.style.display === 'none') return;
+        const items = cfg.list.querySelectorAll('a[data-value]');
+        if (!items.length) return;
+        event.preventDefault();
+        const next = cfg.activeSuggestionIndex < 0
+          ? 0
+          : Math.min(cfg.activeSuggestionIndex + 1, items.length - 1);
+        setActiveSuggestion(next);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        if (cfg.list.style.display === 'none') return;
+        const items = cfg.list.querySelectorAll('a[data-value]');
+        if (!items.length) return;
+        event.preventDefault();
+        if (cfg.activeSuggestionIndex <= 0) {
+          setActiveSuggestion(-1);
+          const len = String(input.value || '').length;
+          if (typeof input.setSelectionRange === 'function') {
+            input.setSelectionRange(len, len);
+          }
+          return;
+        }
+        setActiveSuggestion(cfg.activeSuggestionIndex - 1);
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        if (cfg.list.style.display === 'none') return;
+        const items = cfg.list.querySelectorAll('a[data-value]');
+        if (!items.length) return;
+        event.preventDefault();
+        const index = cfg.activeSuggestionIndex >= 0 ? cfg.activeSuggestionIndex : 0;
+        pickValueSuggestion(items[index]);
+        return;
+      }
+
       if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
         return;
       }
-      const cfg = input._valueSearchConfig;
+      if (!String(input.value || '').trim()) {
+        return;
+      }
       if (!cfg || cfg.list.style.display === 'none') {
         return;
       }
-      const first = cfg.list.querySelector('a[data-value]');
-      if (!first) {
+      const items = cfg.list.querySelectorAll('a[data-value]');
+      if (!items.length) {
         return;
       }
 
       event.preventDefault();
-      cfg.onPick(first.dataset.value);
-      input.value = '';
-      cfg.list.style.display = 'none';
-
-      const focusable = Array.from(document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
-        .filter((el) => el.offsetParent !== null);
-      const idx = focusable.indexOf(input);
-      if (idx >= 0 && idx + 1 < focusable.length) {
-        focusable[idx + 1].focus();
-      }
+      const index = cfg.activeSuggestionIndex >= 0 ? cfg.activeSuggestionIndex : 0;
+      pickValueSuggestion(items[index]);
     });
   }
 
@@ -2109,10 +2223,43 @@
     search.setAttribute('data-1p-ignore', 'true');
 
     let timer = null;
+    let activeIndex = -1;
+    let currentRows = [];
+
+    function setActiveSuggestion(index) {
+      activeIndex = index;
+      const items = suggestions.querySelectorAll('a[data-role-seed-id]');
+      items.forEach((item, idx) => {
+        item.classList.toggle('active', idx === index);
+      });
+      if (index >= 0 && items[index]) {
+        try { items[index].scrollIntoView({ block: 'nearest' }); } catch (_) {}
+      }
+    }
+
+    function pickRoleSeedRow(index) {
+      const person = currentRows[index];
+      if (!person) return;
+      const exists = roleSeedPeople.some((existing) => String(existing.id) === String(person.id));
+      if (exists) return;
+      roleSeedPeople.push(person);
+      search.value = '';
+      suggestions.style.display = 'none';
+      activeIndex = -1;
+      currentRows = [];
+      renderRoleSeedPeople();
+      renderRoleSeedMatrix();
+      refreshRoleSeedCounts();
+      updateRoleSeedPreview();
+      search.focus();
+    }
+
     search.addEventListener('input', (event) => {
       const query = (event.target.value || '').trim();
       clearTimeout(timer);
       if (query.length < 2) {
+        activeIndex = -1;
+        currentRows = [];
         suggestions.style.display = 'none';
         return;
       }
@@ -2129,6 +2276,8 @@
           }
 
           const rows = Array.isArray(data) ? data : [];
+          currentRows = rows;
+          activeIndex = -1;
           if (rows.length === 0) {
             suggestions.innerHTML = '<div class="list-group-item text-muted">No results</div>';
             suggestions.style.display = 'block';
@@ -2136,7 +2285,7 @@
           }
 
           suggestions.innerHTML = rows.map((emp) => `
-            <a href="#" class="list-group-item list-group-item-action" data-role-seed-id="${escapeHtml(emp.id)}">
+            <a href="#" class="list-group-item list-group-item-action" data-role-seed-id="${escapeHtml(emp.id)}" data-index="${rows.indexOf(emp)}">
               <strong>${escapeHtml((`${emp.first_name || ''} ${emp.last_name || ''}`).trim())}</strong><br>
               <small>${escapeHtml(emp.job_title || 'No title')} • ${escapeHtml(emp.username || '')}</small>
             </a>
@@ -2145,17 +2294,7 @@
           suggestions.querySelectorAll('a[data-role-seed-id]').forEach((item, idx) => {
             item.addEventListener('click', (clickEvent) => {
               clickEvent.preventDefault();
-              const person = rows[idx];
-              if (!person) return;
-              const exists = roleSeedPeople.some((existing) => String(existing.id) === String(person.id));
-              if (exists) return;
-              roleSeedPeople.push(person);
-              search.value = '';
-              suggestions.style.display = 'none';
-              renderRoleSeedPeople();
-              renderRoleSeedMatrix();
-              refreshRoleSeedCounts();
-              updateRoleSeedPreview();
+              pickRoleSeedRow(idx);
             });
           });
 
@@ -2171,26 +2310,61 @@
     });
 
     search.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown') {
+        if (suggestions.style.display === 'none') return;
+        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
+        if (!items.length) return;
+        event.preventDefault();
+        const next = activeIndex < 0 ? 0 : Math.min(activeIndex + 1, items.length - 1);
+        setActiveSuggestion(next);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        if (suggestions.style.display === 'none') return;
+        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
+        if (!items.length) return;
+        event.preventDefault();
+        if (activeIndex <= 0) {
+          setActiveSuggestion(-1);
+          const len = String(search.value || '').length;
+          if (typeof search.setSelectionRange === 'function') {
+            search.setSelectionRange(len, len);
+          }
+          return;
+        }
+        setActiveSuggestion(activeIndex - 1);
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        if (suggestions.style.display === 'none') return;
+        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
+        if (!items.length) return;
+        event.preventDefault();
+        const index = activeIndex >= 0 ? activeIndex : 0;
+        pickRoleSeedRow(index);
+        return;
+      }
+
       if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+      if (!String(search.value || '').trim()) {
         return;
       }
       if (suggestions.style.display === 'none') {
         return;
       }
-      const first = suggestions.querySelector('a[data-role-seed-id]');
-      if (!first) {
+      const items = suggestions.querySelectorAll('a[data-role-seed-id]');
+      if (!items.length) {
         return;
       }
 
       event.preventDefault();
-      first.click();
-
-      const focusable = Array.from(document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
-        .filter((el) => el.offsetParent !== null);
-      const idx = focusable.indexOf(search);
-      if (idx >= 0 && idx + 1 < focusable.length) {
-        focusable[idx + 1].focus();
-      }
+      const index = activeIndex >= 0 ? activeIndex : 0;
+      pickRoleSeedRow(index);
+      search.focus();
     });
 
     apply.addEventListener('click', async () => {

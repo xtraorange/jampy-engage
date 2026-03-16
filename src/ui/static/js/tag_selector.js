@@ -43,7 +43,32 @@
 
     var state = {
       tags: uniqueTags(parseCsvTags(hidden.value)),
+      activeSuggestionIndex: -1,
     };
+
+    function getSuggestionItems() {
+      return suggestions.querySelectorAll('a[data-tag]');
+    }
+
+    function setActiveSuggestion(index) {
+      var items = getSuggestionItems();
+      state.activeSuggestionIndex = index;
+      items.forEach(function (item, idx) {
+        item.classList.toggle('active', idx === index);
+      });
+      if (index >= 0 && items[index]) {
+        try { items[index].scrollIntoView({ block: 'nearest' }); } catch (_) {}
+      }
+    }
+
+    function pickSuggestion(item) {
+      if (!item) return false;
+      addTag(item.getAttribute('data-tag'));
+      input.value = '';
+      input.focus();
+      renderSuggestions('');
+      return true;
+    }
 
     function notifyChange() {
       hidden.value = state.tags.join(', ');
@@ -86,6 +111,7 @@
     }
 
     function hideSuggestions() {
+      state.activeSuggestionIndex = -1;
       suggestions.style.display = 'none';
     }
 
@@ -109,6 +135,8 @@
         return;
       }
 
+      state.activeSuggestionIndex = -1;
+
       if (matches.length === 0) {
         suggestions.innerHTML = '<div class="list-group-item text-muted">Press Enter to add this tag</div>';
       } else {
@@ -119,10 +147,7 @@
         suggestions.querySelectorAll('a').forEach(function (item) {
           item.addEventListener('click', function (event) {
             event.preventDefault();
-            addTag(item.getAttribute('data-tag'));
-            input.value = '';
-            input.focus();
-            renderSuggestions('');
+            pickSuggestion(item);
           });
         });
       }
@@ -137,24 +162,56 @@
       renderSuggestions('');
     }
 
-    function focusNextTabStop(current) {
-      var focusable = Array.prototype.slice.call(document.querySelectorAll(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      )).filter(function (el) {
-        return el.offsetParent !== null;
-      });
-      var index = focusable.indexOf(current);
-      if (index >= 0 && index + 1 < focusable.length) {
-        focusable[index + 1].focus();
-      }
-    }
-
     if (addButton) {
       addButton.addEventListener('click', submitInputTag);
     }
 
     input.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown') {
+        if (suggestions.style.display === 'none') {
+          return;
+        }
+        var downItems = getSuggestionItems();
+        if (!downItems.length) {
+          return;
+        }
+        event.preventDefault();
+        var downIndex = state.activeSuggestionIndex < 0
+          ? 0
+          : Math.min(state.activeSuggestionIndex + 1, downItems.length - 1);
+        setActiveSuggestion(downIndex);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        if (suggestions.style.display === 'none') {
+          return;
+        }
+        var upItems = getSuggestionItems();
+        if (!upItems.length) {
+          return;
+        }
+        event.preventDefault();
+        if (state.activeSuggestionIndex <= 0) {
+          setActiveSuggestion(-1);
+          var length = String(input.value || '').length;
+          if (typeof input.setSelectionRange === 'function') {
+            input.setSelectionRange(length, length);
+          }
+          return;
+        }
+        setActiveSuggestion(state.activeSuggestionIndex - 1);
+        return;
+      }
+
       if (event.key === 'Enter') {
+        var enterItems = getSuggestionItems();
+        if (suggestions.style.display !== 'none' && enterItems.length > 0) {
+          event.preventDefault();
+          var enterIndex = state.activeSuggestionIndex >= 0 ? state.activeSuggestionIndex : 0;
+          pickSuggestion(enterItems[enterIndex]);
+          return;
+        }
         event.preventDefault();
         submitInputTag();
         return;
@@ -164,20 +221,23 @@
         return;
       }
 
+      // If nothing is typed, let Tab move to the next field naturally.
+      if (!String(input.value || '').trim()) {
+        return;
+      }
+
       if (suggestions.style.display === 'none') {
         return;
       }
 
-      var firstSuggestion = suggestions.querySelector('a[data-tag]');
-      if (!firstSuggestion) {
+      var items = getSuggestionItems();
+      if (!items.length) {
         return;
       }
 
       event.preventDefault();
-      addTag(firstSuggestion.getAttribute('data-tag'));
-      input.value = '';
-      renderSuggestions('');
-      focusNextTabStop(input);
+      var pickIndex = state.activeSuggestionIndex >= 0 ? state.activeSuggestionIndex : 0;
+      pickSuggestion(items[pickIndex]);
     });
 
     input.addEventListener('input', function (event) {
