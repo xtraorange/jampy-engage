@@ -171,7 +171,10 @@ def test_generate_page(client):
     assert b"Generate Reports" in rv.data
     assert b"By Group" in rv.data
     assert b"By Tag" in rv.data
-    assert b"Selection Summary" in rv.data
+    assert b"Generation Plan" in rv.data
+    assert b"id=\"selection-summary-toggle\"" in rv.data
+    assert b"id=\"group-search-input\"" in rv.data
+    assert b"id=\"tag-search-input\"" in rv.data
     assert b"Generation Options" in rv.data
 
 
