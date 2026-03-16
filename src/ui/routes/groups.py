@@ -16,7 +16,8 @@ def init_groups_routes(app, base_path: str):
     def groups():
         """List all groups."""
         groups = group_service.discover_groups()
-        return render_template("groups.html", groups=groups)
+        all_tags = group_service.get_all_tags()
+        return render_template("groups.html", groups=groups, all_tags=all_tags)
 
     @groups_bp.route("/group/<handle>", methods=["GET", "POST"])
     def edit_group(handle):
@@ -215,19 +216,37 @@ def init_groups_routes(app, base_path: str):
     def new_group():
         """Create a new group (settings first), then redirect to edit page."""
         all_tags = group_service.get_all_tags()
+        duplicate_from = request.values.get("duplicate_from", "").strip()
+        duplicate_source = group_service.get_group(duplicate_from) if duplicate_from else None
+
         form_data = {
             "handle": "",
             "display_name": "",
             "tags": "",
             "email_recipient": "",
             "output_dir": "",
+            "duplicate_from": duplicate_source.handle if duplicate_source else "",
         }
+
+        if request.method == "GET" and duplicate_source is not None:
+            source_cfg = duplicate_source.config or {}
+            form_data.update({
+                "handle": "",
+                "display_name": "",
+                "tags": ",".join(source_cfg.get("tags", []) or []),
+                "email_recipient": source_cfg.get("email_recipient", "") or "",
+                "output_dir": source_cfg.get("output_dir", "") or "",
+                "duplicate_from": duplicate_source.handle,
+            })
+
         if request.method == "POST":
             handle = request.form.get("handle", "").strip()
             display_name = request.form.get("display_name", handle).strip()
             tags_raw = request.form.get("tags", "").strip()
             email_recipient = request.form.get("email_recipient", "").strip()
             output_dir = request.form.get("output_dir", "").strip()
+            duplicate_from = request.form.get("duplicate_from", "").strip()
+            duplicate_source = group_service.get_group(duplicate_from) if duplicate_from else None
 
             form_data = {
                 "handle": handle,
@@ -235,6 +254,7 @@ def init_groups_routes(app, base_path: str):
                 "tags": tags_raw,
                 "email_recipient": email_recipient,
                 "output_dir": output_dir,
+                "duplicate_from": duplicate_source.handle if duplicate_source else "",
             }
 
             if not validate_group_handle(handle):
@@ -243,18 +263,44 @@ def init_groups_routes(app, base_path: str):
             tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
 
             try:
+                source_cfg = duplicate_source.config.copy() if duplicate_source is not None else {}
+                source_has_override = duplicate_source.has_override_query() if duplicate_source is not None else False
+                source_override_sql = duplicate_source.read_override_query() if source_has_override else ""
+                source_query_builder = source_cfg.get("query_builder") if duplicate_source is not None else None
+                source_query_mode = source_cfg.get("query_mode") if duplicate_source is not None else None
+
                 group_service.create_group(
                     handle=handle,
                     display_name=display_name,
                     tags=tags,
+                    query=source_override_sql if duplicate_source is not None else None,
+                    query_builder=source_query_builder if duplicate_source is not None else None,
                     email_recipient=email_recipient or None,
                     output_dir=output_dir or None,
                 )
+
+                if duplicate_source is not None and source_query_mode in {"builder", "manual"}:
+                    created_group = group_service.get_group(handle)
+                    if created_group is not None:
+                        group_service.update_group(group=created_group, query_mode=source_query_mode)
+
                 return redirect(url_for("groups.edit_group", handle=handle))
             except ValueError as e:
-                return render_template("group_create.html", error=str(e), all_tags=all_tags, form_data=form_data)
+                return render_template(
+                    "group_create.html",
+                    error=str(e),
+                    all_tags=all_tags,
+                    form_data=form_data,
+                    duplicate_source=duplicate_source,
+                )
 
-        return render_template("group_create.html", error=None, all_tags=all_tags, form_data=form_data)
+        return render_template(
+            "group_create.html",
+            error=None,
+            all_tags=all_tags,
+            form_data=form_data,
+            duplicate_source=duplicate_source,
+        )
 
     @groups_bp.route("/group/<handle>/delete", methods=["POST"])
     def delete_group(handle):

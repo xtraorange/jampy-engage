@@ -34,20 +34,22 @@
         </div>
         <div class="card-body d-flex flex-column">
           {% if tag.groups %}
-            <div style="max-height: 140px; overflow-y: auto;">
+            <div style="height: 190px; overflow-y: auto;">
               <ul class="list-group list-group-flush">
                 {% for group in tag.groups %}
                   <li class="list-group-item py-1 px-0 border-0">
                     <div class="d-flex justify-content-between align-items-center gap-2">
                       <span class="small">{{ group.display_name or group.handle }}</span>
-                      <a href="{{ url_for('groups.edit_group', handle=group.handle) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                      <a href="{{ url_for('groups.edit_group', handle=group.handle) }}" class="btn btn-sm btn-outline-primary tag-group-view-btn">View</a>
                     </div>
                   </li>
                 {% endfor %}
               </ul>
             </div>
           {% else %}
-            <p class="text-muted small mb-0"><em>No groups with this tag</em></p>
+            <div style="height: 190px; overflow-y: auto;" class="d-flex align-items-start">
+              <p class="text-muted small mb-0"><em>No groups with this tag</em></p>
+            </div>
           {% endif %}
         </div>
         <div class="card-footer bg-light d-flex gap-2">

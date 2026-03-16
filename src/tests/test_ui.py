@@ -687,6 +687,10 @@ def test_query_builder_routes(client, monkeypatch):
     assert b"Replace Existing" in response.data
     assert b"Add to Existing" in response.data
 
+    response = client.get("/query-builder?group_handle=demo_group&group_name=Demo%20Group")
+    assert response.status_code == 200
+    assert b"Building query for Demo Group (demo_group)" in response.data
+
     # Department ID should appear before BU in both by-role attributes and filters.
     assert response.data.find(b"attr-department-id-tags") < response.data.find(b"attr-bu-code-tags")
     assert response.data.find(b"filter-department-ids-tags") < response.data.find(b"filter-bu-codes-tags")
@@ -791,6 +795,39 @@ def test_group_edit_renders_saved_builder_summary_without_navigation(client, app
     assert b"Group Settings" in rv.data
 
 
+def test_group_summary_person_format_does_not_use_na_placeholder(client, app_workspace):
+    _, base = app_workspace
+    _write_group(
+        base,
+        "person_summary_group",
+        query_builder={
+            "version": 2,
+            "blocks": [
+                {
+                    "type": "hierarchy_by_person",
+                    "persons": [{"person_id": "123"}],
+                    "selected_person_details": [
+                        {
+                            "id": "123",
+                            "first_name": "Elbert",
+                            "last_name": "Moore",
+                            "username": "emoore",
+                            "job_title": "Area Manager",
+                        }
+                    ],
+                    "filters": {},
+                }
+            ],
+        },
+    )
+
+    rv = client.get("/group/person_summary_group")
+    assert rv.status_code == 200
+    assert b"n/a" not in rv.data
+    assert b"formatSummaryPerson" in rv.data
+    assert b"emoore" in rv.data
+
+
 def test_group_new_shows_settings_only_form(client):
     rv = client.get("/group/new")
     assert rv.status_code == 200
@@ -798,6 +835,89 @@ def test_group_new_shows_settings_only_form(client):
     assert b"After creating the group, you will be taken to the group page" in rv.data
     assert b"tag-suggestions" in rv.data
     assert b"Edit SQL Manually (Override)" not in rv.data
+
+
+def test_group_edit_actions_include_duplicate_entry(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "dup_src")
+    cfg_path = base / "groups" / "dup_src" / "group.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    cfg["display_name"] = "Duplicate Source"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    rv = client.get("/group/dup_src")
+    assert rv.status_code == 200
+    assert b"Duplicate Group" in rv.data
+    assert b"duplicate_from=dup_src" in rv.data
+
+
+def test_groups_list_includes_duplicate_button(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "dup_list")
+
+    rv = client.get("/groups")
+    assert rv.status_code == 200
+    assert b"Duplicate" in rv.data
+    assert b"duplicate_from=dup_list" in rv.data
+
+
+def test_groups_list_uses_view_label_and_tag_filter_controls(client, app_workspace):
+    _, base = app_workspace
+    _write_group(
+        base,
+        "group_list_view",
+        query_builder={"version": 2, "blocks": [{"type": "filtered_population"}]},
+    )
+    cfg_path = base / "groups" / "group_list_view" / "group.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    cfg["display_name"] = "Group List View"
+    cfg["tags"] = ["alpha", "beta"]
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    rv = client.get("/groups")
+    assert rv.status_code == 200
+    assert b"group-card-view-btn\">View" in rv.data
+    assert b"group-card-duplicate-btn\">Duplicate" in rv.data
+    assert b"groupTagFilterToggle" in rv.data
+    assert b"groupTagFilterSearch" in rv.data
+    assert b"group-query-preview-scroll" in rv.data
+
+
+def test_tags_list_group_rows_use_view_label_and_fixed_height(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "tagged_group")
+    cfg_path = base / "groups" / "tagged_group" / "group.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    cfg["tags"] = ["ops"]
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    rv = client.get("/tags")
+    assert rv.status_code == 200
+    assert b"tag-group-view-btn\">View" in rv.data
+    assert b"height: 190px; overflow-y: auto;" in rv.data
+
+
+def test_group_new_duplicate_prefills_fields_and_blanks_name_handle(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "source_dup")
+    source_cfg_path = base / "groups" / "source_dup" / "group.yaml"
+    source_cfg = yaml.safe_load(source_cfg_path.read_text(encoding="utf-8")) or {}
+    source_cfg["display_name"] = "Source Dup"
+    source_cfg["tags"] = ["alpha", "beta"]
+    source_cfg["email_recipient"] = "source@example.com"
+    source_cfg["output_dir"] = "/tmp/out"
+    source_cfg_path.write_text(yaml.safe_dump(source_cfg), encoding="utf-8")
+
+    rv = client.get("/group/new?duplicate_from=source_dup")
+    assert rv.status_code == 200
+    assert b"Duplicating from" in rv.data
+    assert b"Source Dup" in rv.data
+    assert b'name="handle" value=""' in rv.data
+    assert b'name="display_name" value=""' in rv.data
+    assert b'name="tags" value="alpha,beta"' in rv.data
+    assert b'name="email_recipient" value="source@example.com"' in rv.data
+    assert b'name="output_dir" value="/tmp/out"' in rv.data
+    assert b'name="duplicate_from" value="source_dup"' in rv.data
 
 
 def test_group_new_post_redirects_to_edit_page_without_query(client, app_workspace):
@@ -824,6 +944,45 @@ def test_group_new_post_redirects_to_edit_page_without_query(client, app_workspa
     assert cfg.get("display_name") == "New Group"
     assert cfg.get("tags") == ["demo", "leadership"]
     assert cfg.get("email_recipient") == "owner@example.com"
+
+
+def test_group_new_duplicate_post_copies_query_configuration(client, app_workspace):
+    _, base = app_workspace
+    _write_group(
+        base,
+        "src_copy",
+        query_builder={"version": 2, "blocks": [{"type": "filtered_population"}]},
+        override_query="SELECT USERNAME FROM omsadm.employee_mv",
+    )
+    src_cfg_path = base / "groups" / "src_copy" / "group.yaml"
+    src_cfg = yaml.safe_load(src_cfg_path.read_text(encoding="utf-8")) or {}
+    src_cfg["display_name"] = "Source"
+    src_cfg["tags"] = ["x"]
+    # Source uses manual mode; duplicate should keep the same active query mode and config.
+    src_cfg["query_mode"] = "manual"
+    src_cfg_path.write_text(yaml.safe_dump(src_cfg), encoding="utf-8")
+
+    rv = client.post(
+        "/group/new",
+        data={
+            "handle": "dup_copy",
+            "display_name": "Dup Copy",
+            "tags": "x",
+            "email_recipient": "",
+            "output_dir": "",
+            "duplicate_from": "src_copy",
+        },
+        follow_redirects=False,
+    )
+
+    assert rv.status_code == 302
+    assert rv.headers.get("Location", "").endswith("/group/dup_copy")
+
+    dup_cfg = yaml.safe_load((base / "groups" / "dup_copy" / "group.yaml").read_text(encoding="utf-8")) or {}
+    assert dup_cfg.get("query_mode") == "manual"
+    assert dup_cfg.get("query_builder") == {"version": 2, "blocks": [{"type": "filtered_population"}]}
+    dup_sql = (base / "groups" / "dup_copy" / "query.sql").read_text(encoding="utf-8")
+    assert dup_sql == "SELECT USERNAME FROM omsadm.employee_mv"
 
 
 def test_delete_group_route_removes_group_folder(client, app_workspace):

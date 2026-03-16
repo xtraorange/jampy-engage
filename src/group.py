@@ -60,6 +60,7 @@ class Group:
             "filter_full_part_time",
             "exclude_root",
             "direct_reports_only",
+            "include_root",
         }
         return {k: v for k, v in payload.items() if k in allowed}
 

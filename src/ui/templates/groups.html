@@ -9,10 +9,23 @@
 </div>
 
 <div class="row mb-3 g-2">
-  <div class="col-md-8">
+  <div class="col-md-5">
     <input type="text" id="groupSearch" class="form-control" placeholder="Search groups by name or handle...">
   </div>
   <div class="col-md-4">
+    <div class="position-relative">
+      <button type="button" class="form-select text-start" id="groupTagFilterToggle" aria-expanded="false">Filter Tags</button>
+      <div class="card p-2 mt-1 tag-filter-menu" id="groupTagFilterMenu" style="display:none; position:absolute; z-index:30; width:100%;">
+        <input type="text" id="groupTagFilterSearch" class="form-control form-control-sm mb-2" placeholder="Search tags...">
+        <div id="groupTagFilterOptions" class="border rounded p-2" style="height: 180px; overflow-y: auto;"></div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="groupTagFilterClear">Clear</button>
+          <button type="button" class="btn btn-sm btn-primary" id="groupTagFilterClose">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
     <select id="groupSort" class="form-select">
       <option value="name-asc">Name A → Z</option>
       <option value="name-desc">Name Z → A</option>
@@ -22,11 +35,19 @@
   </div>
 </div>
 
-<div id="noResults" class="alert alert-info" style="display: none;">No groups match your search.</div>
+<div id="noResults" class="alert alert-info" style="display: none;">No groups match your filters.</div>
 
 <div class="row" id="groupGrid">
 {% for g in groups %}
-  <div class="col-md-6 col-lg-4 mb-3 group-card-container" data-handle="{{ g.handle | lower }}" data-name="{{ (g.display_name or g.handle) | lower }}">
+  {% set has_override = g.has_override_query() %}
+  <div
+    class="col-md-6 col-lg-4 mb-3 group-card-container"
+    data-handle="{{ g.handle | lower }}"
+    data-name="{{ (g.display_name or g.handle) | lower }}"
+    data-tags='{{ (g.tags | list | sort | tojson) | forceescape }}'
+    data-query-builder='{{ (g.config.get("query_builder") or {}) | tojson | forceescape }}'
+    data-has-override="{{ '1' if has_override else '0' }}"
+    data-override-query='{{ (g.read_override_query() if has_override else "") | forceescape }}'>
     <div class="card h-100">
       <div class="card-header">
         <h5 class="card-title mb-0 text-break">{{ g.display_name or g.handle }}</h5>
@@ -35,28 +56,8 @@
         {% endif %}
       </div>
       <div class="card-body d-flex flex-column">
-        {% if g.tags %}
-          <div class="mb-2">
-            <div class="text-muted small fw-semibold mb-1">Tags</div>
-            <div class="d-flex flex-wrap gap-1">
-              {% for tag in g.tags | sort %}
-                <span class="badge badge-soft">{{ tag }}</span>
-              {% endfor %}
-            </div>
-          </div>
-        {% else %}
-          <div class="mb-2 text-muted small">No tags</div>
-        {% endif %}
-
-        <div class="mb-2 small">
-          <span class="text-muted fw-semibold">Query:&nbsp;</span>
-          {% if g.has_override_query() %}
-            <span>Override SQL</span>
-          {% elif g.config.get('query_builder') %}
-            <span>Builder</span>
-          {% else %}
-            <span class="text-muted">No Query</span>
-          {% endif %}
+        <div class="group-query-preview-scroll mb-3">
+          <div class="group-query-preview small text-muted">Loading query preview...</div>
         </div>
 
         {% if g.config.get('email_recipient') %}
@@ -65,9 +66,22 @@
             <span class="small">{{ g.config['email_recipient'] }}</span>
           </div>
         {% endif %}
+
+        <div class="mt-auto text-end">
+          {% if g.tags %}
+            <div class="d-flex justify-content-end flex-wrap gap-1">
+              {% for tag in g.tags | sort %}
+                <span class="badge badge-soft">{{ tag }}</span>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-muted small">No tags</div>
+          {% endif %}
+        </div>
       </div>
       <div class="card-footer bg-light d-flex gap-2">
-        <a href="{{ url_for('groups.edit_group', handle=g.handle) }}" class="btn btn-sm btn-outline-primary flex-grow-1">Edit</a>
+        <a href="{{ url_for('groups.edit_group', handle=g.handle) }}" class="btn btn-sm btn-outline-primary flex-grow-1 group-card-view-btn">View</a>
+        <a href="{{ url_for('groups.new_group', duplicate_from=g.handle) }}" class="btn btn-sm btn-outline-primary flex-grow-1 group-card-duplicate-btn">Duplicate</a>
         <form method="post" action="{{ url_for('groups.delete_group', handle=g.handle) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this group? This action cannot be undone.');" class="flex-grow-1">
           <button type="submit" class="btn btn-sm btn-outline-danger w-100">Delete</button>
         </form>
@@ -87,14 +101,78 @@
   .group-card-container {
     transition: opacity 0.2s ease-in-out;
   }
+
+  .group-query-preview-scroll {
+    height: 190px;
+    overflow-y: auto;
+    padding-right: 0.1rem;
+    scrollbar-gutter: stable;
+  }
+
+  .group-query-preview {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding-right: 0.45rem;
+  }
+
+  .builder-block-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.55rem;
+    background-color: rgba(255, 255, 255, 0.85);
+    width: 94%;
+    max-width: 94%;
+  }
+
+  .summary-section-title {
+    font-weight: 600;
+    margin-bottom: 0.45rem;
+  }
+
+  .summary-row {
+    margin-bottom: 0.4rem;
+  }
+
+  .summary-label {
+    font-weight: 600;
+    display: inline-block;
+    margin-right: 0.35rem;
+  }
+
+  .summary-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+  }
+
+  .summary-empty {
+    color: #6b7280;
+    font-style: italic;
+  }
+
+  .query-preview-sql {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.76rem;
+    line-height: 1.35;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #374151;
+  }
 </style>
 
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    const allTags = Array.isArray({{ all_tags | tojson }}) ? {{ all_tags | tojson }} : [];
     const PAGE_SIZE = 12;
     let currentPage = 0;
     let currentSort = 'name-asc';
     let searchTerm = '';
+    let tagSearchTerm = '';
+    const selectedTagSet = new Set();
 
     const allCards = Array.from(document.querySelectorAll('.group-card-container'));
     const grid = document.getElementById('groupGrid');
@@ -103,14 +181,382 @@
     const pageInfo = document.getElementById('pageInfo');
     const prevBtn = document.getElementById('prevPage');
     const nextBtn = document.getElementById('nextPage');
+    const tagToggle = document.getElementById('groupTagFilterToggle');
+    const tagMenu = document.getElementById('groupTagFilterMenu');
+    const tagSearchInput = document.getElementById('groupTagFilterSearch');
+    const tagOptions = document.getElementById('groupTagFilterOptions');
+    const tagClear = document.getElementById('groupTagFilterClear');
+    const tagClose = document.getElementById('groupTagFilterClose');
 
     function getName(card) { return card.dataset.name || ''; }
     function getHandle(card) { return card.dataset.handle || ''; }
+    function getTags(card) {
+      try {
+        const parsed = JSON.parse(card.dataset.tags || '[]');
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map(v => String(v || '').toLowerCase()).filter(Boolean);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    function renderTag(value) {
+      return `<span class="badge badge-soft">${escapeHtml(value)}</span>`;
+    }
+
+    function renderRow(label, values) {
+      if (!Array.isArray(values) || values.length === 0) return '';
+      return `<div class="summary-row"><span class="summary-label">${escapeHtml(label)}:</span><span class="summary-tags">${values.map(renderTag).join('')}</span></div>`;
+    }
+
+    function normalizePersons(values) {
+      if (!Array.isArray(values)) return [];
+      return values.map(person => ({
+        first_name: person.first_name || '',
+        last_name: person.last_name || '',
+        username: person.username || person.person_username || '',
+        job_title: person.job_title || '',
+        user_id: person.user_id || person.id || person.person_id || '',
+      }));
+    }
+
+    function mergePersonsForSummary(persons, personDetails) {
+      const base = normalizePersons(persons);
+      const details = normalizePersons(personDetails);
+      if (base.length === 0) {
+        return details;
+      }
+      const detailsByKey = new Map();
+      details.forEach((person) => {
+        const key = String(person.user_id || person.username || '').toLowerCase();
+        if (key) {
+          detailsByKey.set(key, person);
+        }
+      });
+      return base.map((person) => {
+        const key = String(person.user_id || person.username || '').toLowerCase();
+        const detail = key ? detailsByKey.get(key) : null;
+        if (!detail) {
+          return person;
+        }
+        return {
+          ...person,
+          first_name: person.first_name || detail.first_name || '',
+          last_name: person.last_name || detail.last_name || '',
+          username: person.username || detail.username || '',
+          job_title: person.job_title || detail.job_title || '',
+        };
+      });
+    }
+
+    function formatSummaryPerson(person) {
+      if (!person || typeof person !== 'object') return '';
+      const name = [person.first_name, person.last_name].filter(Boolean).join(' ').trim();
+      const username = String(person.username || '').trim();
+      const jobTitle = String(person.job_title || '').trim();
+
+      if (name && username) return `${name} (${username})`;
+      if (name && jobTitle) return `${name} (${jobTitle})`;
+      if (name) return name;
+      if (username) return username;
+      if (jobTitle) return jobTitle;
+      return String(person.user_id || '').trim();
+    }
+
+    function defaultFilters() {
+      return {
+        job_titles_display: [],
+        job_codes: [],
+        bu_codes: [],
+        companies: [],
+        tree_branches: [],
+        department_ids: [],
+        full_part_time: '',
+      };
+    }
+
+    function asArray(value) {
+      if (Array.isArray(value)) return value.filter(Boolean);
+      return value ? [value] : [];
+    }
+
+    function createSummaryBlock(type) {
+      if (type === 'hierarchy_by_person') {
+        return {
+          type,
+          persons: [],
+          exclude_root: false,
+          direct_reports_only: false,
+          filters: defaultFilters(),
+        };
+      }
+      if (type === 'hierarchy_by_role') {
+        return {
+          type,
+          attributes: {
+            job_titles_display: [],
+            job_codes: [],
+            job_title_texts: [],
+            bu_codes: [],
+            companies: [],
+            tree_branches: [],
+            department_ids: [],
+          },
+          direct_reports_only: false,
+          filters: defaultFilters(),
+        };
+      }
+      if (type === 'manual_individuals') {
+        return {
+          type,
+          persons: [],
+        };
+      }
+      return {
+        type: 'filtered_population',
+        filters: defaultFilters(),
+      };
+    }
+
+    function normalizeBuilderParams(params) {
+      if (!params || typeof params !== 'object') {
+        return null;
+      }
+
+      if (Array.isArray(params.blocks)) {
+        return {
+          version: 2,
+          blocks: params.blocks.map((block) => {
+            const normalized = {
+              ...createSummaryBlock(block.type || 'filtered_population'),
+              ...block,
+            };
+
+            normalized.persons = mergePersonsForSummary(block.persons, block.selected_person_details);
+            normalized.attributes = {
+              ...createSummaryBlock('hierarchy_by_role').attributes,
+              ...(block.attributes || {}),
+              job_titles_display: asArray(block.attributes?.job_titles_display || block.attributes?.job_title_display),
+              job_codes: asArray(block.attributes?.job_codes || block.attributes?.job_code),
+              job_title_texts: asArray(block.attributes?.job_title_texts || block.attributes?.job_title_text || block.attributes?.job_title),
+              bu_codes: asArray(block.attributes?.bu_codes || block.attributes?.bu_code),
+              companies: asArray(block.attributes?.companies || block.attributes?.company),
+              tree_branches: asArray(block.attributes?.tree_branches || block.attributes?.tree_branch),
+              department_ids: asArray(block.attributes?.department_ids || block.attributes?.department_id),
+            };
+            normalized.filters = {
+              ...defaultFilters(),
+              ...(block.filters || {}),
+            };
+            return normalized;
+          }),
+        };
+      }
+
+      if (!params.mode) {
+        return null;
+      }
+
+      const out = { version: 2, blocks: [] };
+      if (params.mode === 'by_person') {
+        out.blocks.push({
+          ...createSummaryBlock('hierarchy_by_person'),
+          persons: normalizePersons(params.selected_person_details),
+          exclude_root: !!params.exclude_root,
+          direct_reports_only: !!params.direct_reports_only,
+          filters: {
+            ...defaultFilters(),
+            job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
+            job_codes: params.filter_job_codes || [],
+            bu_codes: params.filter_bu_codes || [],
+            companies: params.filter_companies || [],
+            tree_branches: params.filter_tree_branches || [],
+            department_ids: params.filter_department_ids || [],
+            full_part_time: params.filter_full_part_time || '',
+          },
+        });
+      } else if (params.mode === 'by_role' || params.mode === 'by_attributes') {
+        out.blocks.push({
+          ...createSummaryBlock('hierarchy_by_role'),
+          attributes: {
+            job_titles_display: params.attributes_job_title_display ? [params.attributes_job_title_display] : [],
+            job_codes: params.attributes_job_code ? [params.attributes_job_code] : [],
+            job_title_texts: (params.attributes_job_title_text || params.attributes_job_title) ? [params.attributes_job_title_text || params.attributes_job_title] : [],
+            bu_codes: params.attributes_bu_code ? [params.attributes_bu_code] : [],
+            companies: params.attributes_company ? [params.attributes_company] : [],
+            tree_branches: params.attributes_tree_branch ? [params.attributes_tree_branch] : [],
+            department_ids: params.attributes_department_id ? [params.attributes_department_id] : [],
+          },
+          direct_reports_only: !!params.direct_reports_only,
+          filters: {
+            ...defaultFilters(),
+            job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
+            job_codes: params.filter_job_codes || [],
+            bu_codes: params.filter_bu_codes || [],
+            companies: params.filter_companies || [],
+            tree_branches: params.filter_tree_branches || [],
+            department_ids: params.filter_department_ids || [],
+            full_part_time: params.filter_full_part_time || '',
+          },
+        });
+      } else {
+        out.blocks.push({
+          ...createSummaryBlock('filtered_population'),
+          filters: {
+            ...defaultFilters(),
+            job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
+            job_codes: params.filter_job_codes || [],
+            bu_codes: params.filter_bu_codes || [],
+            companies: params.filter_companies || [],
+            tree_branches: params.filter_tree_branches || [],
+            department_ids: params.filter_department_ids || [],
+            full_part_time: params.filter_full_part_time || '',
+          },
+        });
+      }
+
+      if (Array.isArray(params.additional_person_details) && params.additional_person_details.length > 0) {
+        out.blocks.push({
+          ...createSummaryBlock('manual_individuals'),
+          persons: normalizePersons(params.additional_person_details),
+        });
+      }
+
+      return out;
+    }
+
+    function formatBuilderSummaryHtml(params) {
+      const normalizedParams = normalizeBuilderParams(params);
+      if (!normalizedParams || typeof normalizedParams !== 'object') {
+        return '<div class="summary-empty">No query builder parameters selected yet.</div>';
+      }
+      if (Array.isArray(normalizedParams.blocks)) {
+        if (normalizedParams.blocks.length === 0) {
+          return '<div class="summary-empty">No query builder parameters selected yet.</div>';
+        }
+        return normalizedParams.blocks.map((block, index) => {
+          const type = block.type || 'unknown';
+          const labelMap = {
+            hierarchy_by_person: 'Hierarchy by Person',
+            hierarchy_by_role: 'Hierarchy by Role',
+            filtered_population: 'All Employees with Filters',
+            manual_individuals: 'Manual Individuals'
+          };
+          const title = labelMap[type] || type;
+          let details = '';
+          if (type === 'hierarchy_by_person') {
+            const people = Array.isArray(block.persons) ? block.persons : [];
+            details = people.length > 0
+              ? renderRow('Hierarchy Root Members', people.map(formatSummaryPerson).filter(Boolean))
+              : '<div class="summary-empty">No people selected.</div>';
+            const opts = [];
+            if (block.exclude_root) opts.push('Exclude root person(s) from output');
+            if (block.direct_reports_only) opts.push('Only direct reports');
+            if (opts.length) details += renderRow('Options', opts);
+          } else if (type === 'hierarchy_by_role') {
+            const attrs = block.attributes || {};
+            const roleTitleValues = (attrs.job_titles_display || []).length
+              ? attrs.job_titles_display
+              : attrs.job_codes || [];
+            const attrValues = [
+              ...roleTitleValues,
+              ...(attrs.bu_codes || []),
+              ...(attrs.companies || []),
+              ...(attrs.tree_branches || []),
+              ...(attrs.department_ids || []),
+            ].filter(Boolean);
+            details = attrValues.length > 0
+              ? renderRow('Hierarchy Root Attributes', attrValues)
+              : '<div class="summary-empty">No role attributes selected.</div>';
+            if (block.direct_reports_only) details += renderRow('Options', ['Only direct reports']);
+          } else if (type === 'manual_individuals') {
+            const people = Array.isArray(block.persons) ? block.persons : [];
+            details = people.length > 0
+              ? renderRow('Individuals', people.map(formatSummaryPerson).filter(Boolean))
+              : '<div class="summary-empty">No individuals selected.</div>';
+          } else {
+            details = '<div class="summary-empty">All active employees.</div>';
+          }
+          const filters = block.filters || {};
+          const titleFilterTags = (filters.job_titles_display || []).length
+            ? (filters.job_titles_display || [])
+            : (filters.job_codes || []);
+          const filterTags = [
+            ...titleFilterTags,
+            ...(filters.bu_codes || []),
+            ...(filters.companies || []),
+            ...(filters.tree_branches || []),
+            ...(filters.department_ids || []),
+            ...(filters.full_part_time ? [`Full/Part Time: ${filters.full_part_time}`] : []),
+          ];
+          const filtersHtml = filterTags.length ? renderRow('Filters', filterTags) : '';
+          return `<div class="builder-block-card"><div class="summary-section-title">Block ${index + 1}: ${escapeHtml(title)}</div>${details}${filtersHtml}</div>`;
+        }).join('');
+      }
+      return '<div class="summary-empty">No query builder parameters selected yet.</div>';
+    }
+
+    function formatQueryPreview(card) {
+      const hasOverride = card.dataset.hasOverride === '1';
+      const overrideSql = card.dataset.overrideQuery || '';
+      const queryBuilderRaw = card.dataset.queryBuilder || '{}';
+      if (hasOverride && overrideSql.trim()) {
+        return `<div class="builder-block-card"><div class="summary-section-title">Manual SQL</div><pre class="query-preview-sql">${escapeHtml(overrideSql)}</pre></div>`;
+      }
+      try {
+        const queryBuilder = JSON.parse(queryBuilderRaw);
+        const html = formatBuilderSummaryHtml(queryBuilder);
+        if (html && !html.includes('No query builder parameters selected yet.')) {
+          return html;
+        }
+      } catch (_) {
+      }
+      return '<div class="summary-empty">No query configured.</div>';
+    }
+
+    function renderQueryPreviews() {
+      allCards.forEach((card) => {
+        const target = card.querySelector('.group-query-preview');
+        if (!target) return;
+        target.innerHTML = formatQueryPreview(card);
+      });
+    }
+
+    function updateTagToggleLabel() {
+      const count = selectedTagSet.size;
+      tagToggle.textContent = count > 0 ? `Filter Tags (${count})` : 'Filter Tags';
+    }
+
+    function renderTagOptions() {
+      const visible = allTags
+        .filter((tag) => String(tag || '').toLowerCase().includes(tagSearchTerm))
+        .sort((a, b) => String(a || '').localeCompare(String(b || '')));
+      if (visible.length === 0) {
+        tagOptions.innerHTML = '<div class="text-muted small">No tags found.</div>';
+        return;
+      }
+      tagOptions.innerHTML = visible.map((tag) => {
+        const safeTag = String(tag || '');
+        const tagKey = safeTag.toLowerCase();
+        const checked = selectedTagSet.has(tagKey) ? 'checked' : '';
+        return `<div class="form-check mb-1"><input class="form-check-input group-tag-filter-option" type="checkbox" value="${escapeHtml(tagKey)}" id="tag_opt_${escapeHtml(tagKey)}" ${checked}><label class="form-check-label" for="tag_opt_${escapeHtml(tagKey)}">${escapeHtml(safeTag)}</label></div>`;
+      }).join('');
+    }
 
     function updateDisplay() {
       const filtered = allCards.filter(card => {
-        if (!searchTerm) return true;
-        return getName(card).includes(searchTerm) || getHandle(card).includes(searchTerm);
+        const matchesSearch = !searchTerm || getName(card).includes(searchTerm) || getHandle(card).includes(searchTerm);
+        if (!matchesSearch) return false;
+
+        if (selectedTagSet.size === 0) return true;
+        const cardTags = getTags(card);
+        return cardTags.some(tag => selectedTagSet.has(tag));
       });
 
       filtered.sort((a, b) => {
@@ -159,6 +605,54 @@
       updateDisplay();
     });
 
+    tagToggle.addEventListener('click', function() {
+      tagMenu.style.display = tagMenu.style.display === 'none' ? 'block' : 'none';
+      tagToggle.setAttribute('aria-expanded', tagMenu.style.display === 'block' ? 'true' : 'false');
+      if (tagMenu.style.display === 'block') {
+        tagSearchInput.focus();
+      }
+    });
+
+    tagClose.addEventListener('click', function() {
+      tagMenu.style.display = 'none';
+      tagToggle.setAttribute('aria-expanded', 'false');
+    });
+
+    tagClear.addEventListener('click', function() {
+      selectedTagSet.clear();
+      updateTagToggleLabel();
+      renderTagOptions();
+      currentPage = 0;
+      updateDisplay();
+    });
+
+    tagSearchInput.addEventListener('input', function() {
+      tagSearchTerm = this.value.toLowerCase().trim();
+      renderTagOptions();
+    });
+
+    tagOptions.addEventListener('change', function(event) {
+      const target = event.target;
+      if (!target.classList.contains('group-tag-filter-option')) return;
+      const value = String(target.value || '').toLowerCase();
+      if (!value) return;
+      if (target.checked) {
+        selectedTagSet.add(value);
+      } else {
+        selectedTagSet.delete(value);
+      }
+      updateTagToggleLabel();
+      currentPage = 0;
+      updateDisplay();
+    });
+
+    document.addEventListener('click', function(event) {
+      if (!tagMenu.contains(event.target) && !tagToggle.contains(event.target)) {
+        tagMenu.style.display = 'none';
+        tagToggle.setAttribute('aria-expanded', 'false');
+      }
+    });
+
     prevBtn.addEventListener('click', () => {
       if (currentPage === 0) return;
       currentPage--;
@@ -175,6 +669,9 @@
       updateDisplay();
     });
 
+    renderQueryPreviews();
+    renderTagOptions();
+    updateTagToggleLabel();
     updateDisplay();
   });
 </script>

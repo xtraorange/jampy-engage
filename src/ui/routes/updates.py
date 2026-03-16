@@ -284,7 +284,13 @@ def init_updates_routes(app, base_path: str):
     @updates_bp.route("/query-builder", methods=["GET"])
     def query_builder():
         """UI for building hierarchy queries."""
-        return render_template("query_builder.html")
+        group_handle = request.args.get("group_handle", "").strip()
+        group_name = request.args.get("group_name", "").strip()
+        return render_template(
+            "query_builder.html",
+            group_handle=group_handle,
+            group_name=group_name,
+        )
 
     @updates_bp.route("/backup")
     def backup():

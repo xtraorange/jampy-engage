@@ -14,6 +14,10 @@
     </button>
     <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="group-actions-menu">
       <li>
+        <a class="dropdown-item" href="{{ url_for('groups.new_group', duplicate_from=group.handle) }}">Duplicate Group</a>
+      </li>
+      <li><hr class="dropdown-divider"></li>
+      <li>
         <button type="button" class="dropdown-item" id="copy-query-config-action">Copy Query Configuration</button>
       </li>
       <li>
@@ -140,7 +144,10 @@
         <div id="query-manual-view" style="display:none;">
           <div id="query-manual-view-content">
             {% if config.has_override_query %}
-              <pre class="bg-light p-3 mb-3 font-monospace" style="border-radius: 4px; max-height: 300px; overflow-y: auto; font-size: 0.85rem;">{{ config.override_query }}</pre>
+              <div class="builder-block-card mb-3">
+                <div class="summary-section-title">Manual SQL</div>
+                <pre class="query-preview-sql" style="max-height: 300px; overflow-y: auto;">{{ config.override_query }}</pre>
+              </div>
             {% else %}
               <p class="text-muted mb-3">No manual SQL query defined.</p>
             {% endif %}
@@ -287,6 +294,16 @@
     margin-bottom: 10px;
   }
 
+  .query-preview-sql {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #374151;
+  }
+
   #tag-suggestions .list-group-item {
     cursor: pointer;
     font-size: 0.9rem;
@@ -342,7 +359,8 @@
     return values.map(person => ({
       first_name: person.first_name || '',
       last_name: person.last_name || '',
-      username: person.username || '',
+      username: person.username || person.person_username || '',
+      job_title: person.job_title || '',
       user_id: person.user_id || person.id || person.person_id || '',
     }));
   }
@@ -372,8 +390,24 @@
         ...person,
         first_name: person.first_name || detail.first_name || '',
         last_name: person.last_name || detail.last_name || '',
+        username: person.username || detail.username || '',
+        job_title: person.job_title || detail.job_title || '',
       };
     });
+  }
+
+  function formatSummaryPerson(person) {
+    if (!person || typeof person !== 'object') return '';
+    const name = [person.first_name, person.last_name].filter(Boolean).join(' ').trim();
+    const username = String(person.username || '').trim();
+    const jobTitle = String(person.job_title || '').trim();
+
+    if (name && username) return `${name} (${username})`;
+    if (name && jobTitle) return `${name} (${jobTitle})`;
+    if (name) return name;
+    if (username) return username;
+    if (jobTitle) return jobTitle;
+    return String(person.user_id || '').trim();
   }
 
   function defaultFilters() {
@@ -555,7 +589,7 @@
         if (type === 'hierarchy_by_person') {
           const people = Array.isArray(block.persons) ? block.persons : [];
           details = people.length > 0
-            ? renderRow('Hierarchy Root Members', people.map(p => `${[p.first_name, p.last_name].filter(Boolean).join(' ')} (${p.username || 'n/a'})`))
+            ? renderRow('Hierarchy Root Members', people.map(formatSummaryPerson).filter(Boolean))
             : '<div class="summary-empty">No people selected.</div>';
           const opts = [];
           if (block.exclude_root) opts.push('Exclude root person(s) from output');
@@ -580,7 +614,7 @@
         } else if (type === 'manual_individuals') {
           const people = Array.isArray(block.persons) ? block.persons : [];
           details = people.length > 0
-            ? renderRow('Individuals', people.map(p => `${[p.first_name, p.last_name].filter(Boolean).join(' ')} (${p.username || 'n/a'})`))
+            ? renderRow('Individuals', people.map(formatSummaryPerson).filter(Boolean))
             : '<div class="summary-empty">No individuals selected.</div>';
         } else {
           details = '<div class="summary-empty">All active employees.</div>';
@@ -788,7 +822,7 @@
     if (manualViewContent) {
       const sql = typeof cfg.override_query === 'string' ? cfg.override_query : document.getElementById('query').value;
       if (sql && sql.trim()) {
-        manualViewContent.innerHTML = `<pre class="bg-light p-3 mb-3 font-monospace" style="border-radius: 4px; max-height: 300px; overflow-y: auto; font-size: 0.85rem;">${escapeHtml(sql)}</pre>`;
+        manualViewContent.innerHTML = `<div class="builder-block-card mb-3"><div class="summary-section-title">Manual SQL</div><pre class="query-preview-sql" style="max-height: 300px; overflow-y: auto;">${escapeHtml(sql)}</pre></div>`;
       } else {
         manualViewContent.innerHTML = `<p class="text-muted mb-3">No manual SQL query defined.</p>`;
       }
@@ -852,7 +886,11 @@
   function editQueryBuilder() {
     sessionStorage.setItem('query_builder_initial_params', document.getElementById('query_builder_json').value || '{}');
     sessionStorage.setItem('return_to', window.location.pathname);
-    window.location.href = '/query-builder';
+    const params = new URLSearchParams({
+      group_handle: '{{ group.handle }}',
+      group_name: '{{ (config.display_name or group.display_name or group.handle) | e }}',
+    });
+    window.location.href = `/query-builder?${params.toString()}`;
   }
 
   function renderQueryTestRows(rows) {

@@ -7,6 +7,12 @@
   <h1>Create New Group</h1>
 </div>
 
+{% if duplicate_source %}
+<div class="alert alert-info">
+  Duplicating from <strong>{{ duplicate_source.display_name or duplicate_source.handle }}</strong>. Enter a new handle and display name.
+</div>
+{% endif %}
+
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 {% endif %}
@@ -16,6 +22,7 @@
     <fieldset>
       <legend class="mb-3">Group Details</legend>
       <form method="post" class="p-3" data-unsaved-guard="true">
+        <input type="hidden" name="duplicate_from" value="{{ form_data.duplicate_from }}">
         <div class="mb-3">
           <label for="handle" class="form-label">Group Handle <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="handle" name="handle" value="{{ form_data.handle }}" placeholder="e.g., sales_team" required>

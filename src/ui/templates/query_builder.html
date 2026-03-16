@@ -5,7 +5,12 @@
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h1>Query Builder</h1>
+  <div>
+    <h1 class="mb-0">Query Builder</h1>
+    {% if group_name or group_handle %}
+    <div class="text-muted small mt-1">Building query for {{ group_name or group_handle }}{% if group_handle and group_name and group_handle != group_name %} ({{ group_handle }}){% endif %}</div>
+    {% endif %}
+  </div>
 </div>
 
 <div id="db-error-banner" class="alert alert-danger" style="display: none;"></div>
@@ -363,7 +368,6 @@
         type,
         name: BLOCK_TYPES[type],
         persons: [],
-        exclude_root: false,
         direct_reports_only: false,
         include_root: true,
         filters: defaultFilters(),
@@ -589,7 +593,6 @@
         username: p.username,
         job_title: p.job_title || '',
       }));
-      payload.exclude_root = !!block.exclude_root;
       payload.direct_reports_only = !!block.direct_reports_only;
       payload.include_root = block.include_root !== false;
     }
@@ -1190,16 +1193,12 @@
         </div>
         <div class="mb-3">
           <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="person-exclude-root" ${block.exclude_root ? 'checked' : ''}>
-            <label class="form-check-label" for="person-exclude-root">Exclude selected root person(s) from output</label>
-          </div>
-          <div class="form-check mt-2">
             <input class="form-check-input" type="checkbox" id="person-direct-reports-only" ${block.direct_reports_only ? 'checked' : ''}>
             <label class="form-check-label" for="person-direct-reports-only">Only direct reports</label>
           </div>
           <div class="form-check mt-2">
             <input class="form-check-input" type="checkbox" id="person-include-root" ${block.include_root !== false ? 'checked' : ''}>
-            <label class="form-check-label" for="person-include-root">Include root hierarchy user in results</label>
+            <label class="form-check-label" for="person-include-root">Include root hierarchy user(s) in results</label>
           </div>
         </div>
         ${renderFiltersEditor(block)}
@@ -1250,7 +1249,7 @@
           </div>
           <div class="form-check mt-2">
             <input class="form-check-input" type="checkbox" id="role-include-root" ${block.include_root !== false ? 'checked' : ''}>
-            <label class="form-check-label" for="role-include-root">Include root hierarchy user in results</label>
+            <label class="form-check-label" for="role-include-root">Include root hierarchy user(s) in results</label>
           </div>
         </div>
         <div class="card border-light bg-light mb-3">
@@ -1370,7 +1369,6 @@
 
   function bindPersonBlockEditor(block) {
     function sync() {
-      block.exclude_root = document.getElementById('person-exclude-root').checked;
       block.direct_reports_only = document.getElementById('person-direct-reports-only').checked;
       block.include_root = document.getElementById('person-include-root').checked;
       markDirty();
@@ -1396,7 +1394,6 @@
       }
     });
 
-    document.getElementById('person-exclude-root').addEventListener('change', sync);
     document.getElementById('person-direct-reports-only').addEventListener('change', sync);
     document.getElementById('person-include-root').addEventListener('change', sync);
     bindFilterEditor(block);
@@ -2467,6 +2464,8 @@
         id: block.id || newId(),
         ...createBlock(block.type || 'filtered_population'),
         ...block,
+        include_root: block.include_root !== undefined ? !!block.include_root : !block.exclude_root,
+        exclude_root: false,
         persons: mergePersonsWithDetails(block.persons, block.selected_person_details),
       })) };
     }
@@ -2480,8 +2479,8 @@
       out.blocks.push({
         ...createBlock('hierarchy_by_person'),
         persons: Array.isArray(params.selected_person_details) ? params.selected_person_details : [],
-        exclude_root: !!params.exclude_root,
         direct_reports_only: !!params.direct_reports_only,
+        include_root: params.include_root !== undefined ? !!params.include_root : !params.exclude_root,
         filters: {
           ...defaultFilters(),
           job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],

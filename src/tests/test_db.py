@@ -20,7 +20,7 @@ class DummyClient:
         pass
 
 
-def test_executor(monkeypatch):
+def test_executor(monkeypatch, tmp_path):
     # patch jampy_db.create to return dummy client
     import jampy_db
 
@@ -28,7 +28,7 @@ def test_executor(monkeypatch):
     execu = DatabaseExecutor("dummy")
     rows = execu.run_query("select 1")
     assert rows == [("a@x.com",)]
-    execu.write_csv(rows, None, "./temp.csv")
+    execu.write_csv(rows, None, str(tmp_path / "temp.csv"))
     assert execu.client.queries
     execu.close()
 
