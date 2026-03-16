@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from ..config import load_group_config
 from ..group import Group
+from ..utils.validation import validate_group_handle
 
 
 class GroupService:
@@ -136,6 +137,49 @@ class GroupService:
                     f.write(query)
             elif os.path.exists(group.query_file):
                 os.remove(group.query_file)
+
+    def rename_group(self, group: Group, new_handle: str) -> Group:
+        """Rename a group handle, including folder path and config handle value."""
+        target = (new_handle or "").strip()
+        if not validate_group_handle(target):
+            raise ValueError("Invalid group handle")
+
+        current = group.handle
+        if target == current:
+            return group
+
+        groups = self.discover_groups()
+        for candidate in groups:
+            if candidate.handle.lower() == target.lower() and candidate.handle.lower() != current.lower():
+                raise ValueError("Group already exists")
+
+        old_dir = group.folder
+        new_dir = os.path.join(self.groups_path, target)
+
+        old_norm = os.path.normcase(os.path.normpath(old_dir))
+        new_norm = os.path.normcase(os.path.normpath(new_dir))
+
+        if old_norm == new_norm:
+            # Windows can ignore case-only rename; hop through a temp folder first.
+            temp_dir = os.path.join(self.groups_path, f".__rename_tmp__{time.time_ns()}")
+            while os.path.exists(temp_dir):
+                temp_dir = os.path.join(self.groups_path, f".__rename_tmp__{time.time_ns()}")
+            os.rename(old_dir, temp_dir)
+            os.rename(temp_dir, new_dir)
+        else:
+            if os.path.exists(new_dir):
+                raise ValueError("Group already exists")
+            os.rename(old_dir, new_dir)
+
+        import yaml
+
+        cfg_path = os.path.join(new_dir, "group.yaml")
+        cfg = load_group_config(new_dir)
+        cfg["handle"] = target
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(cfg, f)
+
+        return Group(new_dir)
 
     def delete_group(self, group: Group) -> None:
         """Delete a group and all its files."""

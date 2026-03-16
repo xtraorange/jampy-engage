@@ -40,6 +40,7 @@
 
 <!-- Hidden form used for AJAX saves; never submitted as a traditional form -->
 <form id="group-edit-form" method="post" style="display:none;" data-bwignore="true" data-1p-ignore="true" autocomplete="off">
+  <input type="hidden" id="handle" name="handle" value="{{ config.handle or group.handle }}" data-bwignore="true" data-1p-ignore="true">
   <input type="hidden" id="query_builder_json" name="query_builder_json" value='{{ config.query_builder_json | e }}' data-bwignore="true" data-1p-ignore="true">
   <input type="hidden" id="query_mode" name="query_mode" value="{{ config.query_mode }}" data-bwignore="true" data-1p-ignore="true">
   <input type="hidden" id="display_name" name="display_name" value="{{ config.display_name }}" data-bwignore="true" data-1p-ignore="true">
@@ -61,6 +62,10 @@
         <h5 class="mb-0">Group Settings</h5>
       </div>
       <div class="card-body">
+        <div class="mb-3">
+          <strong>Handle:</strong>
+          <div class="text-muted" id="view-handle">{{ config.handle or group.handle }}</div>
+        </div>
         <div class="mb-3">
           <strong>Display Name:</strong>
           <div class="text-muted" id="view-display-name">{{ config.display_name or group.display_name or group.handle }}</div>
@@ -95,6 +100,11 @@
         <h5 class="mb-0">Edit Group Settings</h5>
       </div>
       <div class="card-body">
+        <div class="mb-3">
+          <label for="edit-handle" class="form-label">Handle</label>
+          <input type="text" class="form-control" id="edit-handle" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <small class="form-text text-muted">Letters, numbers, underscores, and dashes only.</small>
+        </div>
         <div class="mb-3">
           <label for="edit-display-name" class="form-label">Display Name</label>
           <input type="text" class="form-control" id="edit-display-name">
@@ -756,6 +766,7 @@
   /* ---- settings card ---- */
   function openSettingsEdit() {
     // Populate edit fields from current view values
+    document.getElementById('edit-handle').value         = document.getElementById('handle').value;
     document.getElementById('edit-display-name').value   = document.getElementById('display_name').value;
     document.getElementById('edit-email-recipient').value = document.getElementById('email_recipient').value;
     document.getElementById('edit-output-dir').value     = document.getElementById('output_dir').value;
@@ -778,6 +789,7 @@
       tagList = tagSelector.getTags();
     }
     // Write edit-field values back into the hidden form inputs
+    document.getElementById('handle').value          = document.getElementById('edit-handle').value;
     document.getElementById('display_name').value    = document.getElementById('edit-display-name').value;
     document.getElementById('email_recipient').value = document.getElementById('edit-email-recipient').value;
     document.getElementById('output_dir').value      = document.getElementById('edit-output-dir').value;
@@ -785,6 +797,7 @@
 
     const payload = new FormData(document.getElementById('group-edit-form'));
     payload.set('save_scope', 'settings');
+    payload.set('handle', document.getElementById('edit-handle').value);
     payload.set('display_name', document.getElementById('edit-display-name').value);
     payload.set('tags', document.getElementById('tags').value);
     payload.set('email_recipient', document.getElementById('edit-email-recipient').value);
@@ -800,6 +813,10 @@
       const data = await response.json();
       if (!response.ok || data.ok === false) {
         alert(data.error || 'Unable to save settings.');
+        return;
+      }
+      if (data.redirect_url) {
+        window.location.href = data.redirect_url;
         return;
       }
       applyServerConfig(data.config || {});
@@ -869,6 +886,7 @@
     if (!cfg || typeof cfg !== 'object') return;
 
     // Update hidden form inputs (source of truth)
+    if (typeof cfg.handle === 'string')          document.getElementById('handle').value          = cfg.handle;
     if (typeof cfg.display_name === 'string')    document.getElementById('display_name').value    = cfg.display_name;
     if (Array.isArray(cfg.tags))                  document.getElementById('tags').value             = cfg.tags.join(', ');
     if (typeof cfg.email_recipient === 'string')  document.getElementById('email_recipient').value = cfg.email_recipient;
@@ -905,10 +923,14 @@
   }
 
   function updateSettingsViewDisplay() {
+    const handle = document.getElementById('handle').value;
     const dn = document.getElementById('display_name').value;
     const email = document.getElementById('email_recipient').value;
     const dir = document.getElementById('output_dir').value;
     const tags = parseTags(document.getElementById('tags').value);
+
+    const viewHandle = document.getElementById('view-handle');
+    if (viewHandle) viewHandle.textContent = handle || '(Not set)';
 
     const viewDn = document.getElementById('view-display-name');
     if (viewDn) viewDn.textContent = dn || '(Not set)';
@@ -928,7 +950,7 @@
 
     // Also update page heading
     const h1 = document.querySelector('h1');
-    if (h1) h1.textContent = dn || '{{ group.handle }}';
+    if (h1) h1.textContent = dn || handle || '{{ group.handle }}';
   }
 
   /* ---- builder summary ---- */

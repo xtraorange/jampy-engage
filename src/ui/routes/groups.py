@@ -29,6 +29,7 @@ def init_groups_routes(app, base_path: str):
 
         def _build_cfg():
             cfg = group.config.copy()
+            cfg["handle"] = group.handle
             cfg["tags_str"] = ",".join(cfg.get("tags", []))
             cfg["has_override_query"] = group.has_override_query()
             cfg["override_query"] = group.read_override_query() if cfg["has_override_query"] else ""
@@ -76,7 +77,19 @@ def init_groups_routes(app, base_path: str):
                 return jsonify(ok=True, config=cfg)
 
             if save_scope == "settings":
+                requested_handle = request.form.get("handle", "").strip() or group.handle
+                if not validate_group_handle(requested_handle):
+                    if is_ajax:
+                        return jsonify(ok=False, error="Invalid group handle"), 400
+                    cfg = _build_cfg()
+                    return render_template("group.html", group=group, config=cfg, error="Invalid group handle", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True)
+
                 tags = [t.strip() for t in tags_str.split(",") if t.strip()]
+                original_handle = group.handle
+                if requested_handle != group.handle:
+                    group = group_service.rename_group(group, requested_handle)
+                    handle = group.handle
+
                 group_service.update_group(
                     group=group,
                     display_name=display_name,
@@ -85,6 +98,7 @@ def init_groups_routes(app, base_path: str):
                     output_dir=output_dir or None,
                     query_mode=query_mode,
                 )
+                renamed = original_handle != group.handle
             elif save_scope == "query":
                 if not query and not query_builder:
                     if is_ajax:
@@ -114,11 +128,15 @@ def init_groups_routes(app, base_path: str):
                     output_dir=output_dir or None,
                     query_mode=query_mode,
                 )
+                renamed = False
 
             group = group_service.get_group(handle)
             cfg = _build_cfg()
             if is_ajax:
-                return jsonify(ok=True, config=cfg)
+                payload = {"ok": True, "config": cfg}
+                if save_scope == "settings" and renamed:
+                    payload["redirect_url"] = url_for("groups.edit_group", handle=group.handle)
+                return jsonify(payload)
             return render_template("group.html", group=group, config=cfg, all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=False)
 
         # Prepare data for template

@@ -811,6 +811,71 @@ def test_group_edit_renders_saved_builder_summary_without_navigation(client, app
     assert b"Group Settings" in rv.data
 
 
+def test_group_edit_settings_show_handle_view_and_edit_fields(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "handle_visible")
+
+    rv = client.get("/group/handle_visible")
+    assert rv.status_code == 200
+    assert b"<strong>Handle:</strong>" in rv.data
+    assert b"id=\"view-handle\"" in rv.data
+    assert b"id=\"edit-handle\"" in rv.data
+    assert b"name=\"handle\"" in rv.data
+
+
+def test_group_settings_rename_handle_updates_folder_and_config(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "rename_me")
+
+    rv = client.post(
+        "/group/rename_me",
+        data={
+            "save_scope": "settings",
+            "handle": "Renamed_Me",
+            "display_name": "Rename Me",
+            "tags": "demo",
+            "email_recipient": "",
+            "output_dir": "",
+            "query_mode": "builder",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert rv.status_code == 200
+    payload = rv.get_json() or {}
+    assert payload.get("ok") is True
+    assert payload.get("redirect_url", "").endswith("/group/Renamed_Me")
+    assert (base / "groups" / "rename_me").exists() is False
+    assert (base / "groups" / "Renamed_Me").exists() is True
+
+    cfg = yaml.safe_load((base / "groups" / "Renamed_Me" / "group.yaml").read_text(encoding="utf-8")) or {}
+    assert cfg.get("handle") == "Renamed_Me"
+
+
+def test_group_settings_rename_handle_case_only_is_supported(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "caseonly")
+
+    rv = client.post(
+        "/group/caseonly",
+        data={
+            "save_scope": "settings",
+            "handle": "CaseOnly",
+            "display_name": "Case Only",
+            "tags": "demo",
+            "email_recipient": "",
+            "output_dir": "",
+            "query_mode": "builder",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert rv.status_code == 200
+    payload = rv.get_json() or {}
+    assert payload.get("ok") is True
+    assert payload.get("redirect_url", "").endswith("/group/CaseOnly")
+    folder_names = {p.name for p in (base / "groups").iterdir() if p.is_dir()}
+    assert "CaseOnly" in folder_names
+
+
 def test_group_summary_person_format_does_not_use_na_placeholder(client, app_workspace):
     _, base = app_workspace
     _write_group(
