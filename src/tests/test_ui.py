@@ -687,6 +687,7 @@ def test_query_builder_routes(client, monkeypatch):
     assert response.status_code == 200
     assert b"Query Builder" in response.data
     assert b"btn-test-query-modal" in response.data
+    assert b"btn-explain-query" in response.data
     assert b"query-test-modal" in response.data
     assert b"attr-bu-code-tags" in response.data
     assert b"attr-company-tags" in response.data
@@ -765,6 +766,11 @@ def test_query_builder_routes(client, monkeypatch):
 
     response = client.post("/api/test-query-details", json={"sql": "SELECT USERNAME FROM dual", "page": 1, "page_size": 100})
     assert response.status_code in [200, 500]
+
+    response = client.post("/api/explain-builder-query", json={"version": 2, "blocks": [{"type": "filtered_population"}]})
+    assert response.status_code == 200
+    payload = response.get_json() or {}
+    assert "Start from all active employees." in payload.get("text", "")
 
 
 def test_group_edit_hides_builder_summary_when_override_exists(client, app_workspace):
@@ -859,6 +865,20 @@ def test_group_edit_actions_include_duplicate_entry(client, app_workspace):
     assert rv.status_code == 200
     assert b"Duplicate Group" in rv.data
     assert b"duplicate_from=dup_src" in rv.data
+
+
+def test_group_edit_builder_mode_shows_plain_english_action(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "builder_src", query_builder={"version": 2, "blocks": [{"type": "filtered_population"}]})
+    cfg_path = base / "groups" / "builder_src" / "group.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    cfg["query_mode"] = "builder"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    rv = client.get("/group/builder_src")
+    assert rv.status_code == 200
+    assert b"explain-query-action" in rv.data
+    assert b"Describe Query (Plain English)" in rv.data
 
 
 def test_groups_list_includes_duplicate_button(client, app_workspace):

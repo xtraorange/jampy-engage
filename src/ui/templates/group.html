@@ -18,6 +18,9 @@
       </li>
       <li><hr class="dropdown-divider"></li>
       <li>
+        <button type="button" class="dropdown-item" id="explain-query-action" style="display:none;">Describe Query (Plain English)</button>
+      </li>
+      <li>
         <button type="button" class="dropdown-item" id="copy-query-config-action">Copy Query Configuration</button>
       </li>
       <li>
@@ -220,6 +223,24 @@
   </div>
 </div>
 
+<div class="modal fade" id="group-query-explain-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Plain-English Query Summary</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <textarea id="group-query-explain-text" class="form-control" rows="14" readonly style="white-space: pre-wrap;"></textarea>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-secondary" id="group-copy-query-explain">Copy Text</button>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="mt-1 d-flex justify-content-end">
   <a href="{{ url_for('groups.groups') }}" class="btn btn-outline-secondary">Back to Groups</a>
 </div>
@@ -333,6 +354,7 @@
   let queryEditReturnMode = null;
   let tagSelector = null;
   let copyModal = null;
+  let explainModal = null;
   let queryTestModal = null;
   let queryTestPage = 1;
   const QUERY_TEST_PAGE_SIZE = 100;
@@ -676,6 +698,7 @@
       if (testQueryBtn) testQueryBtn.style.display = 'none';
     }
     renderQueryEditAction();
+    updateExplainQueryActionVisibility();
   }
 
   function persistQueryModeSelection(mode) {
@@ -687,6 +710,47 @@
       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
       body: payload.toString(),
     }).catch(() => {});
+  }
+
+  function hasBuilderConfigPayload() {
+    const raw = document.getElementById('query_builder_json').value || '{}';
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.blocks)) {
+        return parsed.blocks.length > 0;
+      }
+      return parsed && Object.keys(parsed).length > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function updateExplainQueryActionVisibility() {
+    const action = document.getElementById('explain-query-action');
+    if (!action) return;
+    const show = currentQueryMode === 'builder' && hasBuilderConfigPayload();
+    action.style.display = show ? '' : 'none';
+  }
+
+  async function generatePlainEnglishSummary() {
+    const raw = document.getElementById('query_builder_json').value || '{}';
+    let payload = {};
+    try {
+      payload = JSON.parse(raw);
+    } catch (_) {
+      throw new Error('Unable to read saved Query Builder parameters.');
+    }
+
+    const response = await fetch('/api/explain-builder-query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.error || 'Unable to generate plain-English summary.');
+    }
+    return String(data.text || '').trim();
   }
 
   /* ---- settings card ---- */
@@ -1212,9 +1276,44 @@
     }
 
     const copyAction = document.getElementById('copy-query-config-action');
+    const explainAction = document.getElementById('explain-query-action');
     if (copyAction && window.bootstrap && bootstrap.Modal) {
       copyModal = new bootstrap.Modal(document.getElementById('copy-query-config-modal'));
       copyAction.addEventListener('click', openCopyQueryConfigModal);
+    }
+
+    if (window.bootstrap && bootstrap.Modal) {
+      explainModal = new bootstrap.Modal(document.getElementById('group-query-explain-modal'));
+    }
+
+    if (explainAction) {
+      explainAction.addEventListener('click', async () => {
+        if (currentQueryMode !== 'builder') return;
+        const output = document.getElementById('group-query-explain-text');
+        if (!output || !explainModal) return;
+        output.value = 'Generating plain-English summary...';
+        explainModal.show();
+        try {
+          output.value = await generatePlainEnglishSummary();
+        } catch (error) {
+          output.value = `Error: ${String(error)}`;
+        }
+      });
+    }
+
+    const copyExplainButton = document.getElementById('group-copy-query-explain');
+    if (copyExplainButton) {
+      copyExplainButton.addEventListener('click', async () => {
+        const output = document.getElementById('group-query-explain-text');
+        const text = String(output?.value || '').trim();
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          output.select();
+          document.execCommand('copy');
+        }
+      });
     }
 
     const copySearchInput = document.getElementById('copy-source-search');
@@ -1243,6 +1342,8 @@
         await loadGroupQueryTestPage(queryTestPage + 1);
       });
     }
+
+    updateExplainQueryActionVisibility();
   });
 </script>
 

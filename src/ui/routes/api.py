@@ -7,6 +7,7 @@ from datetime import datetime
 from ...services.config_service import ConfigService
 from ...services.employee_lookup_service import EmployeeLookupService
 from ...sql_builder import generate_safe_hierarchy_sql
+from ...query_explainer import explain_builder_query
 from ...db import DatabaseExecutor
 
 
@@ -304,6 +305,16 @@ def init_api_routes(app, base_path: str):
 
             sql = generate_safe_hierarchy_sql(**data)
             return jsonify({"sql": sql})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+    @api_bp.route("/api/explain-builder-query", methods=["POST"])
+    def explain_builder_query_api():
+        """Generate plain-English explanation from builder parameters."""
+        try:
+            data = request.get_json(silent=True) or {}
+            text = explain_builder_query(data)
+            return jsonify({"text": text})
         except Exception as e:
             return jsonify({"error": str(e)}), 400
 

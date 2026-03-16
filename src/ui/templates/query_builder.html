@@ -79,9 +79,28 @@
         <div class="card-body">
           <button type="button" id="btn-accept-sql" class="btn btn-success w-100 mb-2" style="display: none;">Accept This Query</button>
           <button type="button" id="btn-test-query-modal" class="btn btn-outline-primary w-100 mb-2" style="display: none;">Test Query</button>
+          <button type="button" id="btn-explain-query" class="btn btn-outline-secondary w-100 mb-2" style="display: none;">Plain-English Summary</button>
           <button type="button" id="btn-edit-sql" class="btn btn-warning w-100 mb-2">Edit SQL Manually</button>
           <button type="button" id="btn-cancel" class="btn btn-outline-secondary w-100">Cancel</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="query-explain-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Plain-English Query Summary</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <textarea id="query-explain-text" class="form-control" rows="14" readonly style="white-space: pre-wrap;"></textarea>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-secondary" id="btn-copy-query-explain">Copy Text</button>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
       </div>
     </div>
   </div>
@@ -288,6 +307,7 @@
   };
   let roleSeedCounts = {};
   let queryTestModal = null;
+  let queryExplainModal = null;
   let queryTestPage = 1;
   const QUERY_TEST_PAGE_SIZE = 100;
 
@@ -1671,6 +1691,7 @@
     const preview = document.getElementById('sql-preview');
     const btnTest = document.getElementById('btn-test-query');
     const btnTestModal = document.getElementById('btn-test-query-modal');
+    const btnExplain = document.getElementById('btn-explain-query');
     const btnAccept = document.getElementById('btn-accept-sql');
     const wholeCount = document.getElementById('whole-query-count');
 
@@ -1682,6 +1703,7 @@
       preview.value = '';
       btnTest.style.display = 'none';
       if (btnTestModal) btnTestModal.style.display = 'none';
+      if (btnExplain) btnExplain.style.display = 'none';
       btnAccept.style.display = 'none';
       return;
     }
@@ -1699,6 +1721,7 @@
         preview.value = `Error: ${data.error}`;
         btnTest.style.display = 'none';
         if (btnTestModal) btnTestModal.style.display = 'none';
+        if (btnExplain) btnExplain.style.display = 'none';
         btnAccept.style.display = 'none';
         return;
       }
@@ -1707,14 +1730,29 @@
       preview.value = currentSQL;
       btnTest.style.display = 'inline-block';
       if (btnTestModal) btnTestModal.style.display = 'block';
+      if (btnExplain) btnExplain.style.display = 'block';
       btnAccept.style.display = 'inline-block';
     } catch (error) {
       showDbErrorBanner(error);
       preview.value = `Error generating SQL: ${error}`;
       btnTest.style.display = 'none';
       if (btnTestModal) btnTestModal.style.display = 'none';
+      if (btnExplain) btnExplain.style.display = 'none';
       btnAccept.style.display = 'none';
     }
+  }
+
+  async function buildPlainEnglishSummary() {
+    const response = await fetch('/api/explain-builder-query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(builderPayload()),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.error || 'Unable to generate plain-English summary.');
+    }
+    return String(data.text || '').trim();
   }
 
   async function runCountForSql(sql) {
@@ -1835,6 +1873,32 @@
     queryTestPage = 1;
     queryTestModal.show();
     await loadQueryTestPage(1);
+  });
+
+  document.getElementById('btn-explain-query').addEventListener('click', async () => {
+    const output = document.getElementById('query-explain-text');
+    if (!queryExplainModal) {
+      queryExplainModal = new bootstrap.Modal(document.getElementById('query-explain-modal'));
+    }
+    output.value = 'Generating plain-English summary...';
+    queryExplainModal.show();
+    try {
+      output.value = await buildPlainEnglishSummary();
+    } catch (error) {
+      output.value = `Error: ${String(error)}`;
+    }
+  });
+
+  document.getElementById('btn-copy-query-explain').addEventListener('click', async () => {
+    const output = document.getElementById('query-explain-text');
+    const text = String(output.value || '').trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      output.select();
+      document.execCommand('copy');
+    }
   });
 
   document.getElementById('query-test-prev').addEventListener('click', async () => {
