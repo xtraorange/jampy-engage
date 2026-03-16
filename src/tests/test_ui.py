@@ -95,6 +95,16 @@ def test_index_page(client):
     assert b"General Settings" in rv.data
     assert b"settings-actions-menu" in rv.data
     assert b"Restart App" in rv.data
+    assert b"Page Load Diagnostics" in rv.data
+    assert b"Dynamic Request Diagnostics" in rv.data
+
+
+def test_perf_headers_are_present_on_ui_responses(client):
+    rv = client.get("/groups")
+    assert rv.status_code == 200
+    assert "X-App-Request-Ms" in rv.headers
+    assert rv.headers.get("X-App-Db-Query-Count") is not None
+    assert rv.headers.get("X-App-Db-Total-Ms") is not None
 
 
 def test_settings_can_save_ui_port(client, app_workspace):

@@ -1,5 +1,6 @@
 """Web UI package for the application."""
 from flask import Flask
+from flask import g
 import os
 import webbrowser
 import time
@@ -40,6 +41,41 @@ def create_app():
     app.register_blueprint(tags_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(updates_bp)
+
+    @app.before_request
+    def _start_request_perf_tracking():
+        g.request_started_at = time.perf_counter()
+        g.db_query_timings = []
+        g.db_query_total_ms = 0.0
+
+    @app.context_processor
+    def _inject_perf_footer_data():
+        started_at = getattr(g, "request_started_at", None)
+        request_elapsed_ms = 0.0
+        if started_at is not None:
+            request_elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+
+        db_queries = list(getattr(g, "db_query_timings", []))
+        return {
+            "perf_footer": {
+                "server_request_ms": round(request_elapsed_ms, 2),
+                "db_query_count": len(db_queries),
+                "db_total_ms": round(float(getattr(g, "db_query_total_ms", 0.0)), 2),
+                "db_queries": db_queries,
+            }
+        }
+
+    @app.after_request
+    def _add_perf_headers(response):
+        started_at = getattr(g, "request_started_at", None)
+        if started_at is not None:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+            response.headers["X-App-Request-Ms"] = f"{elapsed_ms:.2f}"
+
+        db_queries = list(getattr(g, "db_query_timings", []))
+        response.headers["X-App-Db-Query-Count"] = str(len(db_queries))
+        response.headers["X-App-Db-Total-Ms"] = f"{float(getattr(g, 'db_query_total_ms', 0.0)):.2f}"
+        return response
 
     return app
 

@@ -1,10 +1,45 @@
 import csv
 import os
 import threading
+import time
 from datetime import datetime
 from typing import Any, Dict, List
 
 import jampy_db
+
+try:
+    from flask import g, has_request_context
+except Exception:  # pragma: no cover - flask is always available for UI usage
+    g = None
+
+    def has_request_context():
+        return False
+
+
+def _query_label(query: str) -> str:
+    compact = " ".join(str(query or "").strip().split())
+    if not compact:
+        return "(empty query)"
+    return compact[:160] + ("..." if len(compact) > 160 else "")
+
+
+def _record_request_query_timing(query: str, elapsed_ms: float, row_count: int) -> None:
+    if not has_request_context() or g is None:
+        return
+
+    if not hasattr(g, "db_query_timings"):
+        g.db_query_timings = []
+    if not hasattr(g, "db_query_total_ms"):
+        g.db_query_total_ms = 0.0
+
+    g.db_query_timings.append(
+        {
+            "label": _query_label(query),
+            "elapsed_ms": round(float(elapsed_ms), 2),
+            "row_count": int(row_count),
+        }
+    )
+    g.db_query_total_ms = float(getattr(g, "db_query_total_ms", 0.0)) + float(elapsed_ms)
 
 
 class DatabaseExecutor:
@@ -15,8 +50,13 @@ class DatabaseExecutor:
 
     def run_query(self, query: str) -> List[Any]:
         # execute synchronously; default return_type 'rows' returns list of dicts
+        started = time.perf_counter()
         job = self.client.query(query, return_type="rows", run_async=False)
-        return job.result()
+        rows = job.result()
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        row_count = len(rows) if isinstance(rows, list) else 0
+        _record_request_query_timing(query, elapsed_ms, row_count)
+        return rows
 
     def write_csv(self, rows: Any, headers: Any, out_file: str) -> None:
         """Write provided rows to CSV without any header.
