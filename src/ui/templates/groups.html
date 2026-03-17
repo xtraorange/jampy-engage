@@ -121,15 +121,49 @@
   .builder-block-card {
     border: 1px solid #e5e7eb;
     border-radius: 8px;
-    padding: 0.55rem;
-    background-color: rgba(255, 255, 255, 0.85);
+    background-color: #fff;
+    overflow: hidden;
     width: 94%;
     max-width: 94%;
   }
 
+  .builder-block-header {
+    background-color: #f8fafc;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0.55rem;
+  }
+
+  .builder-block-body {
+    background-color: #fff;
+    padding: 0.55rem;
+  }
+
   .summary-section-title {
     font-weight: 600;
-    margin-bottom: 0.45rem;
+    margin-bottom: 0;
+  }
+
+  .summary-block-comment {
+    display: inline;
+    color: #6b7280;
+    font-size: 0.74rem;
+    line-height: 1.2;
+    font-style: italic;
+    font-weight: 400;
+    margin-left: 0.35rem;
+  }
+
+  .summary-sub-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 4px;
+  }
+
+  .summary-filter-rule {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 4px 0 6px;
   }
 
   .summary-row {
@@ -449,11 +483,13 @@
             manual_individuals: 'Manual Individuals'
           };
           const title = labelMap[type] || type;
+          const blockComment = String(block.comment || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+          const commentHtml = blockComment ? `<span class="summary-block-comment">(${escapeHtml(blockComment)})</span>` : '';
           let details = '';
           if (type === 'hierarchy_by_person') {
             const people = Array.isArray(block.persons) ? block.persons : [];
             details = people.length > 0
-              ? renderRow('Hierarchy Root Members', people.map(formatSummaryPerson).filter(Boolean))
+              ? `<div class="summary-sub-label">Leader(s):</div><div class="summary-tags">${people.map(formatSummaryPerson).filter(Boolean).map(renderTag).join('')}</div>`
               : '<div class="summary-empty">No people selected.</div>';
             const opts = [];
             if (block.exclude_root) opts.push('Exclude root person(s) from output');
@@ -472,16 +508,16 @@
               ...(attrs.department_ids || []),
             ].filter(Boolean);
             details = attrValues.length > 0
-              ? renderRow('Hierarchy Root Attributes', attrValues)
+              ? `<div class="summary-sub-label">Leader Attributes:</div><div class="summary-tags">${attrValues.map(renderTag).join('')}</div>`
               : '<div class="summary-empty">No role attributes selected.</div>';
             if (block.direct_reports_only) details += renderRow('Options', ['Only direct reports']);
           } else if (type === 'manual_individuals') {
             const people = Array.isArray(block.persons) ? block.persons : [];
             details = people.length > 0
-              ? renderRow('Individuals', people.map(formatSummaryPerson).filter(Boolean))
+              ? `<div class="summary-sub-label">Member(s):</div><div class="summary-tags">${people.map(formatSummaryPerson).filter(Boolean).map(renderTag).join('')}</div>`
               : '<div class="summary-empty">No individuals selected.</div>';
           } else {
-            details = '<div class="summary-empty">All active employees.</div>';
+            details = '<div class="summary-sub-label">All Employees</div>';
           }
           const filters = block.filters || {};
           const titleFilterTags = (filters.job_titles_display || []).length
@@ -495,8 +531,8 @@
             ...(filters.department_ids || []),
             ...(filters.full_part_time ? [`Full/Part Time: ${filters.full_part_time}`] : []),
           ];
-          const filtersHtml = filterTags.length ? renderRow('Filters', filterTags) : '';
-          return `<div class="builder-block-card"><div class="summary-section-title">Block ${index + 1}: ${escapeHtml(title)}</div>${details}${filtersHtml}</div>`;
+          const filtersHtml = filterTags.length ? `<hr class="summary-filter-rule"><div class="summary-sub-label">Filters:</div><div class="summary-tags">${filterTags.map(renderTag).join('')}</div>` : '';
+          return `<div class="builder-block-card"><div class="builder-block-header"><div class="summary-section-title">Block ${index + 1}: ${escapeHtml(title)}${commentHtml}</div></div><div class="builder-block-body">${details}${filtersHtml}</div></div>`;
         }).join('');
       }
       return '<div class="summary-empty">No query builder parameters selected yet.</div>';
@@ -507,7 +543,7 @@
       const overrideSql = card.dataset.overrideQuery || '';
       const queryBuilderRaw = card.dataset.queryBuilder || '{}';
       if (hasOverride && overrideSql.trim()) {
-        return `<div class="builder-block-card"><div class="summary-section-title">Manual SQL</div><pre class="query-preview-sql">${escapeHtml(overrideSql)}</pre></div>`;
+        return `<div class="builder-block-card"><div class="builder-block-header"><div class="summary-section-title">Manual SQL</div></div><div class="builder-block-body"><pre class="query-preview-sql">${escapeHtml(overrideSql)}</pre></div></div>`;
       }
       try {
         const queryBuilder = JSON.parse(queryBuilderRaw);

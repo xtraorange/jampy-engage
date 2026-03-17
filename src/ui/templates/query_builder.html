@@ -387,6 +387,7 @@
         id: newId(),
         type,
         name: BLOCK_TYPES[type],
+        comment: '',
         persons: [],
         direct_reports_only: false,
         include_root: true,
@@ -399,6 +400,7 @@
         id: newId(),
         type,
         name: BLOCK_TYPES[type],
+        comment: '',
         attributes: {
           job_titles_display: [],
           job_codes: [],
@@ -420,6 +422,7 @@
         id: newId(),
         type,
         name: BLOCK_TYPES[type],
+        comment: '',
         filters: defaultFilters(),
         last_count: null,
       };
@@ -428,6 +431,7 @@
       id: newId(),
       type: 'manual_individuals',
       name: BLOCK_TYPES.manual_individuals,
+      comment: '',
       persons: [],
       last_count: null,
     };
@@ -450,6 +454,10 @@
       return value.filter(Boolean);
     }
     return value ? [value] : [];
+  }
+
+  function singleLineComment(value) {
+    return String(value || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   function normalizeRoleAttributes(attributes) {
@@ -478,9 +486,11 @@
   }
 
   function blockSummary(block) {
+    const comment = singleLineComment(block.comment);
+    const prefix = comment ? [`Comment: ${comment}`] : [];
     const filterLines = filterSummaryLines(block);
     if (block.type === 'hierarchy_by_person') {
-      return [`${block.persons.length} selected person(s)`, ...filterLines].join('\n');
+      return [...prefix, `${block.persons.length} selected person(s)`, ...filterLines].join('\n');
     }
     if (block.type === 'hierarchy_by_role') {
       const attrs = normalizeRoleAttributes(block.attributes);
@@ -492,13 +502,13 @@
         ...(attrs.department_ids || []),
       ].filter(Boolean);
       const root = parts.length > 0 ? parts.join(' | ') : 'No role attributes selected';
-      return [`${root} | Root matches: ${block.root_preview_count || 0}`, ...filterLines].join('\n');
+      return [...prefix, `${root} | Root matches: ${block.root_preview_count || 0}`, ...filterLines].join('\n');
     }
     if (block.type === 'filtered_population') {
       const base = 'All Employees';
-      return [base, ...filterLines].join('\n');
+      return [...prefix, base, ...filterLines].join('\n');
     }
-    return `${block.persons.length} manual individual(s)`;
+    return [...prefix, `${block.persons.length} manual individual(s)`].join('\n');
   }
 
   function filterSummaryLines(block) {
@@ -599,6 +609,10 @@
       type: block.type,
       name: block.name || BLOCK_TYPES[block.type],
     };
+    const comment = singleLineComment(block.comment);
+    if (comment) {
+      payload.comment = comment;
+    }
 
     if (block.type === 'hierarchy_by_person') {
       const persons = mergePersonsWithDetails(block.persons, block.selected_person_details);
@@ -660,6 +674,27 @@
     }
 
     return payload;
+  }
+
+  function bindBlockCommentEditor(block) {
+    const input = document.getElementById('block-comment');
+    if (!input) return;
+    input.value = singleLineComment(block.comment);
+
+    const commit = () => {
+      const normalized = singleLineComment(input.value);
+      if (normalized === singleLineComment(block.comment)) {
+        return;
+      }
+      input.value = normalized;
+      block.comment = normalized;
+      markDirty();
+      renderBlocksList();
+      updateSQL();
+    };
+
+    input.addEventListener('change', commit);
+    input.addEventListener('blur', commit);
   }
 
   function builderPayload() {
@@ -1201,10 +1236,17 @@
         <span id="current-block-count" class="badge bg-secondary">Query Count: ${block.last_count === null ? '--' : block.last_count}</span>
       </div>
     `;
+    const blockCommentEditor = `
+      <div class="mb-3">
+        <label for="block-comment" class="form-label">Block Comment (optional)</label>
+        <input type="text" class="form-control" id="block-comment" maxlength="200" placeholder="Single-line note for SQL and plain-English context">
+      </div>
+    `;
 
     if (block.type === 'hierarchy_by_person') {
       editor.innerHTML = `
         ${previewControls}
+        ${blockCommentEditor}
         <div class="mb-3">
           <label for="person-search" class="form-label">Find Employee(s)</label>
           <div id="person-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
@@ -1223,6 +1265,7 @@
         </div>
         ${renderFiltersEditor(block)}
       `;
+      bindBlockCommentEditor(block);
       bindPersonBlockEditor(block);
       wireBlockCountPreview();
       return;
@@ -1232,6 +1275,7 @@
       const attrs = block.attributes || {};
       editor.innerHTML = `
         ${previewControls}
+        ${blockCommentEditor}
         <div class="mb-3">
           <label for="attr-job-title" class="form-label">Job Title(s)/Job Code(s)</label>
           <div id="attr-job-title-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
@@ -1284,6 +1328,7 @@
         </div>
         ${renderFiltersEditor(block)}
       `;
+      bindBlockCommentEditor(block);
       bindRoleBlockEditor(block);
       wireBlockCountPreview();
       return;
@@ -1292,9 +1337,11 @@
     if (block.type === 'filtered_population') {
       editor.innerHTML = `
         ${previewControls}
+        ${blockCommentEditor}
         <p class="text-muted">This block starts from all active employees and applies optional filters.</p>
         ${renderFiltersEditor(block, true)}
       `;
+      bindBlockCommentEditor(block);
       bindFilterEditor(block);
       wireBlockCountPreview();
       return;
@@ -1302,6 +1349,7 @@
 
     editor.innerHTML = `
       ${previewControls}
+      ${blockCommentEditor}
       <div class="mb-3">
         <label for="manual-person-search" class="form-label">Add Individual(s)</label>
         <div id="manual-person-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
@@ -1309,6 +1357,7 @@
         <div id="manual-person-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
       </div>
     `;
+    bindBlockCommentEditor(block);
     bindManualIndividualsEditor(block);
     wireBlockCountPreview();
   }

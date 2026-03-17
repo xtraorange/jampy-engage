@@ -158,8 +158,12 @@
           <div id="query-manual-view-content">
             {% if config.has_override_query %}
               <div class="builder-block-card mb-3">
-                <div class="summary-section-title">Manual SQL</div>
-                <pre class="query-preview-sql" style="max-height: 300px; overflow-y: auto;">{{ config.override_query }}</pre>
+                <div class="builder-block-header">
+                  <div class="summary-section-title">Manual SQL</div>
+                </div>
+                <div class="builder-block-body">
+                  <pre class="query-preview-sql" style="max-height: 300px; overflow-y: auto;">{{ config.override_query }}</pre>
+                </div>
               </div>
             {% else %}
               <p class="text-muted mb-3">No manual SQL query defined.</p>
@@ -293,7 +297,30 @@
   .summary-section-title {
     font-weight: 600;
     color: var(--app-primary);
-    margin-bottom: 6px;
+    margin-bottom: 0;
+  }
+
+  .summary-block-comment {
+      display: inline;
+    color: var(--app-muted);
+    font-size: 0.78rem;
+    line-height: 1.2;
+      font-style: italic;
+      font-weight: 400;
+      margin-left: 6px;
+  }
+
+  .summary-sub-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--app-muted);
+    margin-bottom: 4px;
+  }
+
+  .summary-filter-rule {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 4px 0 6px;
   }
 
   .summary-row {
@@ -321,8 +348,19 @@
     border: 1px solid var(--app-border);
     border-radius: 8px;
     background: #fff;
-    padding: 10px;
+    overflow: hidden;
     margin-bottom: 10px;
+  }
+
+  .builder-block-header {
+    background: #f8fafc;
+    border-bottom: 1px solid var(--app-border);
+    padding: 10px;
+  }
+
+  .builder-block-body {
+    background: #fff;
+    padding: 10px;
   }
 
   .query-preview-sql {
@@ -617,11 +655,13 @@
         const type = block.type || 'unknown';
         const labelMap = { hierarchy_by_person: 'Hierarchy by Person', hierarchy_by_role: 'Hierarchy by Role', filtered_population: 'All Employees with Filters', manual_individuals: 'Manual Individuals' };
         const title = labelMap[type] || type;
+        const blockComment = String(block.comment || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const commentHtml = blockComment ? `<span class="summary-block-comment">(${escapeHtml(blockComment)})</span>` : '';
         let details = '';
         if (type === 'hierarchy_by_person') {
           const people = Array.isArray(block.persons) ? block.persons : [];
           details = people.length > 0
-            ? renderRow('Hierarchy Root Members', people.map(formatSummaryPerson).filter(Boolean))
+            ? `<div class="summary-sub-label">Leader(s):</div><div class="summary-tags">${people.map(formatSummaryPerson).filter(Boolean).map(renderTag).join('')}</div>`
             : '<div class="summary-empty">No people selected.</div>';
           const opts = [];
           if (block.exclude_root) opts.push('Exclude root person(s) from output');
@@ -640,16 +680,16 @@
             ...(attrs.department_ids || []),
           ].filter(Boolean);
           details = attrValues.length > 0
-            ? renderRow('Hierarchy Root Attributes', attrValues)
+            ? `<div class="summary-sub-label">Leader Attributes:</div><div class="summary-tags">${attrValues.map(renderTag).join('')}</div>`
             : '<div class="summary-empty">No role attributes selected.</div>';
           if (block.direct_reports_only) details += renderRow('Options', ['Only direct reports']);
         } else if (type === 'manual_individuals') {
           const people = Array.isArray(block.persons) ? block.persons : [];
           details = people.length > 0
-            ? renderRow('Individuals', people.map(formatSummaryPerson).filter(Boolean))
+            ? `<div class="summary-sub-label">Member(s):</div><div class="summary-tags">${people.map(formatSummaryPerson).filter(Boolean).map(renderTag).join('')}</div>`
             : '<div class="summary-empty">No individuals selected.</div>';
         } else {
-          details = '<div class="summary-empty">All active employees.</div>';
+          details = '<div class="summary-sub-label">All Employees</div>';
         }
         const filters = block.filters || {};
         const titleFilterTags = (filters.job_titles_display || []).length
@@ -660,8 +700,8 @@
           ...(filters.tree_branches || []), ...(filters.department_ids || []),
           ...(filters.full_part_time ? [`Full/Part Time: ${filters.full_part_time}`] : []),
         ];
-        const filtersHtml = filterTags.length ? renderRow('Filters', filterTags) : '';
-        return `<div class="builder-block-card"><div class="summary-section-title">Block ${index + 1}: ${escapeHtml(title)}</div>${details}${filtersHtml}</div>`;
+        const filtersHtml = filterTags.length ? `<hr class="summary-filter-rule"><div class="summary-sub-label">Filters:</div><div class="summary-tags">${filterTags.map(renderTag).join('')}</div>` : '';
+        return `<div class="builder-block-card"><div class="builder-block-header"><div class="summary-section-title">Block ${index + 1}: ${escapeHtml(title)}${commentHtml}</div></div><div class="builder-block-body">${details}${filtersHtml}</div></div>`;
       }).join('');
     }
     return '<div class="summary-empty">No query builder parameters selected yet.</div>';
@@ -904,7 +944,7 @@
     if (manualViewContent) {
       const sql = typeof cfg.override_query === 'string' ? cfg.override_query : document.getElementById('query').value;
       if (sql && sql.trim()) {
-        manualViewContent.innerHTML = `<div class="builder-block-card mb-3"><div class="summary-section-title">Manual SQL</div><pre class="query-preview-sql" style="max-height: 300px; overflow-y: auto;">${escapeHtml(sql)}</pre></div>`;
+        manualViewContent.innerHTML = `<div class="builder-block-card mb-3"><div class="builder-block-header"><div class="summary-section-title">Manual SQL</div></div><div class="builder-block-body"><pre class="query-preview-sql" style="max-height: 300px; overflow-y: auto;">${escapeHtml(sql)}</pre></div></div>`;
       } else {
         manualViewContent.innerHTML = `<p class="text-muted mb-3">No manual SQL query defined.</p>`;
       }

@@ -235,6 +235,34 @@ def test_block_builder_ignores_empty_hierarchy_by_role_block():
     assert "-- Block 1: By Role (skipped: no qualifying selections)" in sql
 
 
+def test_block_builder_includes_comment_in_sql_header():
+    sql = generate_safe_hierarchy_sql(
+        blocks=[
+            {
+                "type": "manual_individuals",
+                "name": "Manual",
+                "comment": "Only Q2 pilot participants",
+                "persons": [{"person_username": "alice"}],
+            }
+        ]
+    )
+    assert "-- Block 1: Manual | Only Q2 pilot participants" in sql
+
+
+def test_block_builder_normalizes_comment_to_single_line():
+    sql = generate_safe_hierarchy_sql(
+        blocks=[
+            {
+                "type": "manual_individuals",
+                "name": "Manual",
+                "comment": "Line one\nLine two",
+                "persons": [{"person_username": "alice"}],
+            }
+        ]
+    )
+    assert "-- Block 1: Manual | Line one Line two" in sql
+
+
 def test_include_root_by_default_unions_root_back_when_filters_present_by_person():
     sql = generate_hierarchy_sql(
         mode="by_person",

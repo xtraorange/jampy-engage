@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 
-_HR = "-" * 56
+_HR = "-" * 84
 
 
 def _as_list(value: Any) -> List[Any]:
@@ -18,6 +18,14 @@ def _as_list(value: Any) -> List[Any]:
 
 def _str(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _block_comment(block: Dict[str, Any]) -> str:
+    raw = block.get("comment") if isinstance(block, dict) else ""
+    if not isinstance(raw, str):
+        return ""
+    flattened = " ".join(raw.replace("\r", "\n").splitlines())
+    return " ".join(flattened.split()).strip()
 
 
 def _person_label(person: Dict[str, Any]) -> str:
@@ -247,11 +255,12 @@ def _describe_block(block: Dict[str, Any]) -> str:
     lines.append("Start from all active employees.")
     filters = _filter_lines(block.get("filters") or {})
     if filters:
+        lines.append("")
         lines.append("Keep only people who meet these conditions:")
         lines.extend(filters)
     else:
         lines.append("No additional filters are applied.")
-    return "\n".join(_non_empty(lines))
+    return "\n".join(lines)
 
 
 def explain_builder_query(payload: Dict[str, Any]) -> str:
@@ -265,18 +274,25 @@ def explain_builder_query(payload: Dict[str, Any]) -> str:
 
     has_multiple_sources = len(blocks) > 1
     if not has_multiple_sources:
-        return _describe_block(blocks[0]).strip()
+        comment = _block_comment(blocks[0])
+        described = _describe_block(blocks[0]).strip()
+        if comment:
+            return f"- {comment}\n{described}".strip()
+        return described
 
     parts: List[str] = ["This query returns the combination of these sources:", ""]
     total_blocks = len(blocks)
     for index, block in enumerate(blocks, start=1):
-        parts.extend([
-            _HR,
-            f"Source {index}",
+        section = [_HR, f"Source {index}"]
+        comment = _block_comment(block)
+        if comment:
+            section.append(f"- {comment}")
+        section.extend([
             _HR,
             _describe_block(block),
             _HR,
         ])
+        parts.extend(section)
         if index < total_blocks:
             parts.extend(["", ""])
 

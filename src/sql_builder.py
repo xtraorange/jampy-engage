@@ -459,6 +459,14 @@ def _block_label(block_type: str) -> str:
     return labels.get(block_type, block_type or "Block")
 
 
+def _block_comment(value) -> str:
+    """Normalize optional block comments to a safe single-line string."""
+    if not isinstance(value, str):
+        return ""
+    flattened = " ".join(value.replace("\r", "\n").splitlines())
+    return " ".join(flattened.split()).strip()
+
+
 def _manual_individuals_sql(persons: list) -> str:
     normalized = _normalize_persons(persons)
     if not normalized:
@@ -559,13 +567,17 @@ def generate_blocks_sql(blocks: list) -> str:
             raise ValueError("Each block must be an object")
         block_type = block.get("type")
         label = block.get("name") or _block_label(block_type)
+        note = _block_comment(block.get("comment"))
+        block_header = f"-- Block {index}: {label}"
+        if note:
+            block_header += f" | {note}"
         block_sql = _block_to_sql(block)
         if not block_sql or not str(block_sql).strip():
             preamble_comments.append(
-                f"-- Block {index}: {label} (skipped: no qualifying selections)"
+                f"{block_header} (skipped: no qualifying selections)"
             )
             continue
-        parts.append(f"-- Block {index}: {label}\n{block_sql}")
+        parts.append(f"{block_header}\n{block_sql}")
 
     if len(parts) == 0:
         comment_prefix = "\n".join(preamble_comments)

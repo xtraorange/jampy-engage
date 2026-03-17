@@ -700,6 +700,7 @@ def test_query_builder_routes(client, monkeypatch):
     assert b"Build Parameters from Person(s)" in response.data
     assert b"Replace Existing" in response.data
     assert b"Add to Existing" in response.data
+    assert b"Block Comment (optional)" in response.data
 
     response = client.get("/query-builder?group_handle=demo_group&group_name=Demo%20Group")
     assert response.status_code == 200
@@ -775,6 +776,44 @@ def test_query_builder_routes(client, monkeypatch):
     payload = response.get_json() or {}
     assert "Start from all active employees." in payload.get("text", "")
 
+    response = client.post(
+        "/api/explain-builder-query",
+        json={"version": 2, "blocks": [{"type": "filtered_population", "comment": "Fallback audience"}]},
+    )
+    assert response.status_code == 200
+    payload = response.get_json() or {}
+    assert "- Fallback audience" in payload.get("text", "")
+
+    response = client.post(
+        "/api/explain-builder-query",
+        json={
+            "version": 2,
+            "blocks": [
+                {
+                    "type": "filtered_population",
+                    "filters": {"bu_codes": ["BU1"]},
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.get_json() or {}
+    assert "Start from all active employees.\n\nKeep only people who meet these conditions:" in payload.get("text", "")
+
+    response = client.post(
+        "/api/explain-builder-query",
+        json={
+            "version": 2,
+            "blocks": [
+                {"type": "filtered_population"},
+                {"type": "manual_individuals", "persons": [{"person_username": "alice"}]},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.get_json() or {}
+    assert ("-" * 84) in payload.get("text", "")
+
 
 def test_group_edit_hides_builder_summary_when_override_exists(client, app_workspace):
     _, base = app_workspace
@@ -812,6 +851,7 @@ def test_group_edit_renders_saved_builder_summary_without_navigation(client, app
     assert b"Edit Query" in rv.data
     assert b"Edit Query in Manual SQL Mode" not in rv.data
     assert b"Group Settings" in rv.data
+    assert b"summary-block-comment" in rv.data
 
 
 def test_group_edit_settings_show_handle_view_and_edit_fields(client, app_workspace):
