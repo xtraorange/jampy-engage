@@ -8,10 +8,34 @@ from typing import List, Optional
 from ..config import load_general_config
 from ..db import DatabaseExecutor, ProgressTracker
 from ..group import Group
+from ..utils.validation import build_entra_members_url
 from .email_service import EmailService
 
 
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
+
+
+def _ensure_entra_members_shortcut(folder: str, group: Group) -> None:
+    """Ensure a Windows internet shortcut exists for Entra group members page."""
+    group_id = str(group.config.get("entra_group_id") or "").strip()
+    members_url = build_entra_members_url(group_id)
+    if not members_url:
+        return
+
+    shortcut_path = os.path.join(folder, "Entra Members.url")
+    desired = f"[InternetShortcut]\nURL={members_url}\n"
+
+    if os.path.exists(shortcut_path):
+        try:
+            with open(shortcut_path, "r", encoding="utf-8") as existing_file:
+                if existing_file.read() == desired:
+                    return
+        except Exception:
+            # If existing file can't be read, rewrite it with the expected content.
+            pass
+
+    with open(shortcut_path, "w", encoding="utf-8", newline="\n") as shortcut_file:
+        shortcut_file.write(desired)
 
 
 def _safe_filename_component(value: str, default: str = "unnamed") -> str:
@@ -186,6 +210,7 @@ class ReportService:
             # Write CSV
             tracker.update(handle, "writing CSV")
             executor.write_csv(rows, None, fullpath)
+            _ensure_entra_members_shortcut(folder, group)
             tracker.update(handle, f"written {os.path.basename(fullpath)}")
 
             # Send individual email if requested and not using bulk override

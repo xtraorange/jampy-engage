@@ -30,7 +30,7 @@
               {% if groups %}
                 {% for g in groups %}
                   <div class="form-check mb-2 group-option" data-search="{{ (g.display_name or g.handle)|lower }} {{ g.handle|lower }}" title="{{ (g.display_name or g.handle) }} ({{ g.handle }})">
-                    <input class="form-check-input group-checkbox" type="checkbox" name="groups" value="{{ g.handle }}" id="group-{{ g.handle }}">
+                    <input class="form-check-input group-checkbox" type="checkbox" name="groups" value="{{ g.handle }}" id="group-{{ g.handle }}" {% if g.handle in preselected_group_handles %}checked{% endif %}>
                     <label class="form-check-label generate-option-label" for="group-{{ g.handle }}" title="{{ (g.display_name or g.handle) }} ({{ g.handle }})">
                       {{ g.display_name or g.handle }}
                       {% if g.display_name %}

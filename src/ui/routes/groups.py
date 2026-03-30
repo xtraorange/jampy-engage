@@ -4,6 +4,7 @@ import json
 import os
 
 from ...services.group_service import GroupService
+from ...utils.validation import build_entra_members_url
 from ...utils.validation import validate_group_handle
 from ...utils.file_utils import safe_delete_directory
 
@@ -36,6 +37,8 @@ def init_groups_routes(app, base_path: str):
             cfg["query_builder"] = cfg.get("query_builder")
             cfg["query_builder_json"] = json.dumps(cfg.get("query_builder") or {})
             cfg["query_mode"] = cfg.get("query_mode") or ("manual" if cfg["has_override_query"] else "builder")
+            cfg["entra_group_id"] = cfg.get("entra_group_id") or ""
+            cfg["entra_members_url"] = build_entra_members_url(cfg["entra_group_id"])
             return cfg
 
         def _copy_source_groups():
@@ -59,6 +62,7 @@ def init_groups_routes(app, base_path: str):
             tags_str = request.form.get("tags", "").strip()
             email_recipient = request.form.get("email_recipient", "").strip()
             output_dir = request.form.get("output_dir", "").strip()
+            entra_group_link = request.form.get("entra_group_link", "").strip()
             query = request.form.get("query", "").strip()
             query_builder_raw = request.form.get("query_builder_json", "").strip()
             query_mode = request.form.get("query_mode", "").strip()
@@ -97,6 +101,7 @@ def init_groups_routes(app, base_path: str):
                     email_recipient=email_recipient or None,
                     output_dir=output_dir or None,
                     query_mode=query_mode,
+                    entra_group_link=entra_group_link,
                 )
                 renamed = original_handle != group.handle
             elif save_scope == "query":
@@ -127,6 +132,7 @@ def init_groups_routes(app, base_path: str):
                     email_recipient=email_recipient or None,
                     output_dir=output_dir or None,
                     query_mode=query_mode,
+                    entra_group_link=entra_group_link,
                 )
                 renamed = False
 
@@ -243,6 +249,7 @@ def init_groups_routes(app, base_path: str):
             "tags": "",
             "email_recipient": "",
             "output_dir": "",
+            "entra_group_link": "",
             "duplicate_from": duplicate_source.handle if duplicate_source else "",
         }
 
@@ -254,6 +261,7 @@ def init_groups_routes(app, base_path: str):
                 "tags": ",".join(source_cfg.get("tags", []) or []),
                 "email_recipient": source_cfg.get("email_recipient", "") or "",
                 "output_dir": source_cfg.get("output_dir", "") or "",
+                "entra_group_link": source_cfg.get("entra_group_id", "") or "",
                 "duplicate_from": duplicate_source.handle,
             })
 
@@ -263,6 +271,7 @@ def init_groups_routes(app, base_path: str):
             tags_raw = request.form.get("tags", "").strip()
             email_recipient = request.form.get("email_recipient", "").strip()
             output_dir = request.form.get("output_dir", "").strip()
+            entra_group_link = request.form.get("entra_group_link", "").strip()
             duplicate_from = request.form.get("duplicate_from", "").strip()
             duplicate_source = group_service.get_group(duplicate_from) if duplicate_from else None
 
@@ -272,6 +281,7 @@ def init_groups_routes(app, base_path: str):
                 "tags": tags_raw,
                 "email_recipient": email_recipient,
                 "output_dir": output_dir,
+                "entra_group_link": entra_group_link,
                 "duplicate_from": duplicate_source.handle if duplicate_source else "",
             }
 
@@ -295,6 +305,7 @@ def init_groups_routes(app, base_path: str):
                     query_builder=source_query_builder if duplicate_source is not None else None,
                     email_recipient=email_recipient or None,
                     output_dir=output_dir or None,
+                    entra_group_link=entra_group_link,
                 )
 
                 if duplicate_source is not None and source_query_mode in {"builder", "manual"}:

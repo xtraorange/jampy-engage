@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from ..config import load_group_config
 from ..group import Group
-from ..utils.validation import validate_group_handle
+from ..utils.validation import extract_entra_group_id, validate_group_handle
 
 
 class GroupService:
@@ -47,6 +47,7 @@ class GroupService:
         query_builder: Optional[dict] = None,
         email_recipient: Optional[str] = None,
         output_dir: Optional[str] = None,
+        entra_group_link: Optional[str] = None,
     ) -> Group:
         """Create a new group."""
         if not handle or not handle.replace("_", "").replace("-", "").isalnum():
@@ -69,6 +70,9 @@ class GroupService:
             config["email_recipient"] = email_recipient
         if output_dir:
             config["output_dir"] = output_dir
+        entra_group_id = extract_entra_group_id(entra_group_link or "")
+        if entra_group_id:
+            config["entra_group_id"] = entra_group_id
         if query_builder:
             config["query_builder"] = query_builder
 
@@ -95,6 +99,7 @@ class GroupService:
         email_recipient: Optional[str] = None,
         output_dir: Optional[str] = None,
         query_mode: Optional[str] = None,
+        entra_group_link: Optional[str] = None,
     ) -> None:
         """Update an existing group."""
         config = group.config.copy()
@@ -113,6 +118,12 @@ class GroupService:
                 config.pop("output_dir", None)
             else:
                 config["output_dir"] = output_dir
+        if entra_group_link is not None:
+            entra_group_id = extract_entra_group_id(entra_group_link)
+            if entra_group_id:
+                config["entra_group_id"] = entra_group_id
+            else:
+                config.pop("entra_group_id", None)
         if query_builder is not None:
             if query_builder:
                 config["query_builder"] = query_builder
@@ -183,59 +194,65 @@ class GroupService:
 
     def delete_group(self, group: Group) -> None:
         """Delete a group and all its files."""
-        # Handle Windows file permissions
-        def _onrmerror(func, path, exc_info):
+        def _make_tree_writable(path: str) -> None:
+            if not os.path.exists(path):
+                return
+            for root, dirs, files in os.walk(path):
+                for name in files + dirs:
+                    entry = os.path.join(root, name)
+                    try:
+                        os.chmod(entry, stat.S_IWRITE)
+                    except Exception:
+                        pass
             try:
-                os.chmod(path, stat.S_I_WRITE)
-                func(path)
+                os.chmod(path, stat.S_IWRITE)
             except Exception:
                 pass
 
-        # Walk and chmod for Windows
-        for root, dirs, files in os.walk(group.folder):
-            for name in files + dirs:
-                path = os.path.join(root, name)
-                try:
-                    os.chmod(path, stat.S_I_WRITE)
-                except Exception:
-                    pass
+        def _onrmerror(func, path, exc_info):
+            # Retry once after clearing read-only attributes.
+            try:
+                os.chmod(path, stat.S_IWRITE)
+                func(path)
+            except Exception:
+                # Keep original failure behavior so caller can retry with backoff.
+                pass
 
-        # Try removing up to a few times
-        for attempt in range(4):
+        if not os.path.exists(group.folder):
+            return
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(10):
+            _make_tree_writable(group.folder)
             try:
                 shutil.rmtree(group.folder, onerror=_onrmerror)
-                break
-            except PermissionError:
-                time.sleep(0.5)
+            except (PermissionError, OSError) as exc:
+                last_exc = exc
 
-        # Final check
-        if os.path.exists(group.folder):
-            # Fallback cleanup for stubborn file handles on Windows.
-            try:
-                for root, dirs, files in os.walk(group.folder, topdown=False):
-                    for filename in files:
-                        file_path = os.path.join(root, filename)
-                        try:
-                            os.chmod(file_path, stat.S_IWRITE)
-                        except Exception:
-                            pass
-                        try:
-                            os.remove(file_path)
-                        except FileNotFoundError:
-                            pass
-                    for dirname in dirs:
-                        dir_path = os.path.join(root, dirname)
-                        try:
-                            os.chmod(dir_path, stat.S_IWRITE)
-                        except Exception:
-                            pass
-                        try:
-                            os.rmdir(dir_path)
-                        except FileNotFoundError:
-                            pass
-                os.rmdir(group.folder)
-            except Exception as exc:
-                raise Exception("Failed to delete group folder") from exc
+            if not os.path.exists(group.folder):
+                return
+
+            # Transient locks (OneDrive/AV indexing) are common on Windows.
+            time.sleep(0.25 * (attempt + 1))
+
+        remaining_sample = []
+        try:
+            for root, dirs, files in os.walk(group.folder):
+                for name in files + dirs:
+                    remaining_sample.append(os.path.join(root, name))
+                    if len(remaining_sample) >= 5:
+                        break
+                if len(remaining_sample) >= 5:
+                    break
+        except Exception:
+            remaining_sample = []
+
+        detail = ""
+        if last_exc is not None:
+            detail = f" Last error: {last_exc}"
+        if remaining_sample:
+            detail += f" Remaining entries: {remaining_sample}"
+        raise Exception(f"Failed to delete group folder.{detail}")
 
     def get_all_tags(self) -> List[str]:
         """Get all unique tags across all groups."""

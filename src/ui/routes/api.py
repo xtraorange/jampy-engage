@@ -502,10 +502,15 @@ def init_api_routes(app, base_path: str):
             # Read CSV file
             import csv
             parsed_rows = []
+            headers = []
             with open(csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f)
+                first_row = next(reader, None)
+
+                if first_row and any(str(cell).strip() for cell in first_row):
+                    headers = [str(cell).strip() or f"column_{index + 1}" for index, cell in enumerate(first_row)]
+
                 for row in reader:
-                    # Generated report files typically have no header row; keep all rows as data.
                     if not row or not any(str(cell).strip() for cell in row):
                         continue
                     parsed_rows.append(row)
@@ -513,13 +518,18 @@ def init_api_routes(app, base_path: str):
             if parsed_rows:
                 max_cols = max(len(row) for row in parsed_rows)
             else:
-                max_cols = 1
+                max_cols = len(headers) if headers else 1
 
-            # Provide synthetic headers so the UI can render a table.
-            if max_cols == 1:
-                headers = ["email"]
-            else:
-                headers = [f"column_{index + 1}" for index in range(max_cols)]
+            # Fall back to synthetic headers if file had no header row.
+            if not headers:
+                if max_cols == 1:
+                    headers = ["email"]
+                else:
+                    headers = [f"column_{index + 1}" for index in range(max_cols)]
+            elif len(headers) < max_cols:
+                headers.extend([f"column_{index + 1}" for index in range(len(headers), max_cols)])
+            elif len(headers) > max_cols:
+                max_cols = len(headers)
 
             rows = [row + [""] * (max_cols - len(row)) for row in parsed_rows]
             

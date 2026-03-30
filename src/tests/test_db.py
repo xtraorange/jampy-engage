@@ -1,3 +1,4 @@
+import csv
 import os
 
 from src.db import DatabaseExecutor
@@ -30,7 +31,12 @@ def test_executor(monkeypatch, tmp_path):
     execu = DatabaseExecutor("dummy")
     rows = execu.run_query("select 1")
     assert rows == [("a@x.com",)]
-    execu.write_csv(rows, None, str(tmp_path / "temp.csv"))
+    out_file = tmp_path / "temp.csv"
+    execu.write_csv(rows, None, str(out_file))
+    with open(out_file, newline="", encoding="utf-8") as f:
+        written_rows = list(csv.reader(f))
+    assert written_rows[0] == ["ObjectId"]
+    assert written_rows[1] == ["a@x.com"]
     assert execu.client.queries
     execu.close()
 

@@ -1,5 +1,38 @@
 """Input validation utilities."""
 
+import re
+
+
+_GUID_RE = re.compile(
+    r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+)
+
+
+def extract_entra_group_id(value: str) -> str:
+    """Extract and normalize a groupId GUID from a raw value or Entra URL.
+
+    Returns an empty string when no valid GUID is found.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+
+    match = _GUID_RE.search(raw)
+    if not match:
+        return ""
+    return match.group(1).lower()
+
+
+def build_entra_members_url(group_id: str) -> str:
+    """Build the Entra members page URL for a given group ID."""
+    normalized = extract_entra_group_id(group_id)
+    if not normalized:
+        return ""
+    return (
+        "https://entra.microsoft.com/?pwa=1#view/Microsoft_AAD_IAM/"
+        f"GroupDetailsMenuBlade/~/Members/groupId/{normalized}/menuId/"
+    )
+
 
 def validate_email(email: str) -> bool:
     """Validate email address format."""

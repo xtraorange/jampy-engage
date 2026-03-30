@@ -59,7 +59,7 @@ class DatabaseExecutor:
         return rows
 
     def write_csv(self, rows: Any, headers: Any, out_file: str) -> None:
-        """Write provided rows to CSV without any header.
+        """Write provided rows to CSV with required ObjectId header.
 
         Each row should be an iterable of values; the caller is responsible for
         collapsing to a single email column if desired.
@@ -67,6 +67,7 @@ class DatabaseExecutor:
         os.makedirs(os.path.dirname(out_file), exist_ok=True)
         with open(out_file, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.writer(csvfile)
+            writer.writerow(["ObjectId"])
             for row in rows:
                 writer.writerow(row)
 

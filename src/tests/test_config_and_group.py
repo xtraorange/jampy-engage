@@ -1,11 +1,14 @@
 import os
 import tempfile
 import yaml
+import shutil
 
 from src.config import load_general_config, load_group_config
 from src.group import Group
+from src.services.report_service import _ensure_entra_members_shortcut
 from src.services.group_service import GroupService
 from src.services.config_service import ConfigService
+from src.utils.validation import build_entra_members_url, extract_entra_group_id
 
 
 def test_general_config_defaults(tmp_path):
@@ -159,3 +162,84 @@ def test_remove_override_keeps_query_builder_params(tmp_path):
     blocks = g2.config.get("query_builder", {}).get("blocks", [])
     assert blocks
     assert blocks[0].get("attributes", {}).get("job_code") == "000545"
+
+
+def test_delete_group_retries_after_transient_permission_error(tmp_path, monkeypatch):
+    base = tmp_path
+    groups_dir = base / "groups"
+    groups_dir.mkdir()
+    group_dir = groups_dir / "retry_delete"
+    group_dir.mkdir()
+    (group_dir / "group.yaml").write_text(
+        yaml.safe_dump({"handle": "retry_delete", "display_name": "Retry", "tags": []}),
+        encoding="utf-8",
+    )
+    (group_dir / "query.sql").write_text("SELECT 1", encoding="utf-8")
+
+    svc = GroupService(str(base))
+    group = svc.get_group("retry_delete")
+    assert group is not None
+
+    real_rmtree = shutil.rmtree
+    attempts = {"count": 0}
+
+    def flaky_rmtree(path, onerror=None):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise PermissionError("transient lock")
+        return real_rmtree(path, onerror=onerror)
+
+    monkeypatch.setattr("src.services.group_service.shutil.rmtree", flaky_rmtree)
+
+    svc.delete_group(group)
+
+    assert attempts["count"] >= 3
+    assert not group_dir.exists()
+
+
+def test_extract_entra_group_id_from_guid_or_link():
+    guid = "1b447e90-6f3a-4ab4-aa09-64ad80861b43"
+    assert extract_entra_group_id(guid) == guid
+
+    link = (
+        "https://entra.microsoft.com/?pwa=1#view/Microsoft_AAD_IAM/"
+        "GroupDetailsMenuBlade/~/Members/groupId/1B447E90-6F3A-4AB4-AA09-64AD80861B43/menuId/"
+    )
+    assert extract_entra_group_id(link) == guid
+
+
+def test_build_entra_members_url_uses_members_blade():
+    guid = "1b447e90-6f3a-4ab4-aa09-64ad80861b43"
+    assert build_entra_members_url(guid) == (
+        "https://entra.microsoft.com/?pwa=1#view/Microsoft_AAD_IAM/"
+        "GroupDetailsMenuBlade/~/Members/groupId/1b447e90-6f3a-4ab4-aa09-64ad80861b43/menuId/"
+    )
+
+
+def test_ensure_entra_members_shortcut_creates_and_refreshes_file(tmp_path):
+    group_dir = tmp_path / "groups" / "entra_group"
+    group_dir.mkdir(parents=True)
+    (group_dir / "group.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "handle": "entra_group",
+                "display_name": "Entra Group",
+                "tags": [],
+                "entra_group_id": "1b447e90-6f3a-4ab4-aa09-64ad80861b43",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (group_dir / "query.sql").write_text("SELECT 1", encoding="utf-8")
+    group = Group(str(group_dir))
+
+    out_dir = tmp_path / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    shortcut = out_dir / "Entra Members.url"
+    shortcut.write_text("[InternetShortcut]\nURL=https://example.invalid/\n", encoding="utf-8")
+
+    _ensure_entra_members_shortcut(str(out_dir), group)
+
+    contents = shortcut.read_text(encoding="utf-8")
+    assert "[InternetShortcut]" in contents
+    assert "URL=https://entra.microsoft.com/?pwa=1#view/Microsoft_AAD_IAM/GroupDetailsMenuBlade/~/Members/groupId/1b447e90-6f3a-4ab4-aa09-64ad80861b43/menuId/" in contents

@@ -16,6 +16,9 @@
       <li>
         <a class="dropdown-item" href="{{ url_for('groups.new_group', duplicate_from=group.handle) }}">Duplicate Group</a>
       </li>
+      <li>
+        <a class="dropdown-item" href="{{ url_for('main.generate', group=group.handle) }}">Generate Report</a>
+      </li>
       <li><hr class="dropdown-divider"></li>
       <li>
         <button type="button" class="dropdown-item" id="explain-query-action" style="display:none;">Describe Query (Plain English)</button>
@@ -47,6 +50,7 @@
   <input type="hidden" id="tags" name="tags" value="{{ config.tags_str }}" data-bwignore="true" data-1p-ignore="true">
   <input type="hidden" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}" data-bwignore="true" data-1p-ignore="true">
   <input type="hidden" id="output_dir" name="output_dir" value="{{ config.output_dir }}" data-bwignore="true" data-1p-ignore="true">
+  <input type="hidden" id="entra_group_link" name="entra_group_link" value="{{ config.entra_group_id }}" data-bwignore="true" data-1p-ignore="true">
   <input type="hidden" id="query" name="query" value="{{ config.override_query }}" data-bwignore="true" data-1p-ignore="true">
 </form>
 <form id="group-delete-form" method="post" action="{{ url_for('groups.delete_group', handle=group.handle) }}" style="display:none;" data-bwignore="true" data-1p-ignore="true" autocomplete="off"></form>
@@ -88,6 +92,16 @@
           <strong>Output Directory Override:</strong>
           <div class="text-muted" id="view-output-dir" style="word-break: break-word;">{{ config.output_dir or "(Using global directory)" }}</div>
         </div>
+        <div class="mb-3">
+          <strong>Entra Group:</strong>
+          <div id="view-entra-group">
+            {% if config.entra_group_id and config.entra_members_url %}
+              <a href="{{ config.entra_members_url }}" target="_blank" rel="noopener noreferrer">{{ config.entra_group_id }}</a>
+            {% else %}
+              <span class="text-muted">(Not set)</span>
+            {% endif %}
+          </div>
+        </div>
       </div>
       <div class="card-footer d-flex justify-content-end">
         <button type="button" class="btn btn-primary" onclick="openSettingsEdit()">Edit Settings</button>
@@ -127,6 +141,11 @@
             <button class="btn btn-outline-secondary" type="button" id="browse_output_dir">Browse...</button>
           </div>
           <small class="form-text text-muted">Leave empty to use the global output directory</small>
+        </div>
+        <div class="mb-3">
+          <label for="edit-entra-group-link" class="form-label">Entra Group Link or Group ID</label>
+          <input type="text" class="form-control" id="edit-entra-group-link" placeholder="Paste an Entra group URL or GUID">
+          <small class="form-text text-muted">Any Entra group page URL is accepted; the groupId is extracted and saved.</small>
         </div>
       </div>
       <div class="card-footer d-flex gap-2 justify-content-end">
@@ -810,6 +829,7 @@
     document.getElementById('edit-display-name').value   = document.getElementById('display_name').value;
     document.getElementById('edit-email-recipient').value = document.getElementById('email_recipient').value;
     document.getElementById('edit-output-dir').value     = document.getElementById('output_dir').value;
+    document.getElementById('edit-entra-group-link').value = document.getElementById('entra_group_link').value;
     const tags = parseTags(document.getElementById('tags').value);
     tagList = tags.slice();
     if (tagSelector) {
@@ -833,6 +853,7 @@
     document.getElementById('display_name').value    = document.getElementById('edit-display-name').value;
     document.getElementById('email_recipient').value = document.getElementById('edit-email-recipient').value;
     document.getElementById('output_dir').value      = document.getElementById('edit-output-dir').value;
+    document.getElementById('entra_group_link').value = document.getElementById('edit-entra-group-link').value;
     document.getElementById('tags').value            = tagList.join(', ');
 
     const payload = new FormData(document.getElementById('group-edit-form'));
@@ -842,6 +863,7 @@
     payload.set('tags', document.getElementById('tags').value);
     payload.set('email_recipient', document.getElementById('edit-email-recipient').value);
     payload.set('output_dir', document.getElementById('edit-output-dir').value);
+    payload.set('entra_group_link', document.getElementById('edit-entra-group-link').value);
     payload.set('query_mode', currentQueryMode);
 
     try {
@@ -933,6 +955,8 @@
     else                                           document.getElementById('email_recipient').value = '';
     if (typeof cfg.output_dir === 'string')       document.getElementById('output_dir').value      = cfg.output_dir;
     else                                           document.getElementById('output_dir').value      = '';
+    if (typeof cfg.entra_group_id === 'string')   document.getElementById('entra_group_link').value = cfg.entra_group_id;
+    else                                           document.getElementById('entra_group_link').value = '';
     if (typeof cfg.override_query === 'string')   document.getElementById('query').value           = cfg.override_query;
     if (typeof cfg.query_builder_json === 'string') document.getElementById('query_builder_json').value = cfg.query_builder_json;
 
@@ -967,6 +991,7 @@
     const dn = document.getElementById('display_name').value;
     const email = document.getElementById('email_recipient').value;
     const dir = document.getElementById('output_dir').value;
+    const entraGroupId = document.getElementById('entra_group_link').value;
     const tags = parseTags(document.getElementById('tags').value);
 
     const viewHandle = document.getElementById('view-handle');
@@ -981,6 +1006,16 @@
     const viewDir = document.getElementById('view-output-dir');
     if (viewDir) viewDir.textContent = dir || '(Using global directory)';
 
+    const viewEntraGroup = document.getElementById('view-entra-group');
+    if (viewEntraGroup) {
+      const entraUrl = buildEntraMembersUrl(entraGroupId);
+      if (entraGroupId && entraUrl) {
+        viewEntraGroup.innerHTML = `<a href="${escapeHtml(entraUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(entraGroupId)}</a>`;
+      } else {
+        viewEntraGroup.innerHTML = '<span class="text-muted">(Not set)</span>';
+      }
+    }
+
     const viewTags = document.getElementById('view-tags');
     if (viewTags) {
       viewTags.innerHTML = tags.length
@@ -991,6 +1026,12 @@
     // Also update page heading
     const h1 = document.querySelector('h1');
     if (h1) h1.textContent = dn || handle || '{{ group.handle }}';
+  }
+
+  function buildEntraMembersUrl(groupId) {
+    const raw = String(groupId || '').trim();
+    if (!raw) return '';
+    return `https://entra.microsoft.com/?pwa=1#view/Microsoft_AAD_IAM/GroupDetailsMenuBlade/~/Members/groupId/${encodeURIComponent(raw)}/menuId/`;
   }
 
   /* ---- builder summary ---- */

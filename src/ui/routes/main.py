@@ -457,6 +457,7 @@ def init_main_routes(app, base_path: str):
         # Handle GET - show form
         groups = group_service.discover_groups()
         cfg = config_service.load_general_config()
+        preselected_handle = request.args.get("group", "").strip()
 
         # Get all tags for the UI, with per-tag group counts
         tag_counts = {}
@@ -474,7 +475,12 @@ def init_main_routes(app, base_path: str):
             for g in groups
         ]
 
+        preselected_group_handles = []
+        if preselected_handle and any(g.handle == preselected_handle for g in groups):
+            preselected_group_handles.append(preselected_handle)
+
         return render_template("report_generate.html", config=cfg, groups=groups, tags=tags, tag_counts=tag_counts, metrics=metrics, group_meta=group_meta,
+                               preselected_group_handles=preselected_group_handles,
                                updating=app.config.get("updating"),
                                update_error=app.config.get("update_error"))
 

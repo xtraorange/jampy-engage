@@ -178,12 +178,39 @@ def test_generate_page(client):
     assert b"Generation Options" in rv.data
 
 
+def test_generate_page_preselects_group_from_query_param(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "solo_group")
+
+    rv = client.get("/generate?group=solo_group")
+    assert rv.status_code == 200
+    assert b'id="group-solo_group"' in rv.data
+    assert b'id="group-solo_group" checked' in rv.data
+
+
 def test_dashboard_stats_api(client):
     rv = client.get("/api/dashboard-stats")
     assert rv.status_code == 200
     data = rv.get_json()
     assert "total_run_requests" in data
     assert "per_group_generation_counts" in data
+
+
+def test_view_report_uses_header_and_excludes_it_from_rows(client, app_workspace):
+    app, base = app_workspace
+    csv_path = base / "output" / "sample.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text("ObjectId\nalice@fastenal.com\nbob@fastenal.com\n", encoding="utf-8")
+
+    tracker = type("Tracker", (), {"results": {"demo": {"csv_path": str(csv_path)}}})()
+    app.config["tracker"] = tracker
+
+    rv = client.get("/api/view-report?handle=demo")
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data["headers"] == ["ObjectId"]
+    assert data["rows"] == [["alice@fastenal.com"], ["bob@fastenal.com"]]
+    assert data["total_rows"] == 2
 
 
 def test_adhoc_match_ignores_blank_rows(client, monkeypatch):
@@ -831,6 +858,7 @@ def test_group_edit_hides_builder_summary_when_override_exists(client, app_works
     assert b"Query Configuration" in rv.data
     assert b"Edit Query" in rv.data
     assert b"group-actions-menu" in rv.data
+    assert b"Generate Report" in rv.data
     assert b"Copy Query Configuration" in rv.data
 
 
@@ -956,6 +984,7 @@ def test_group_new_shows_settings_only_form(client):
     rv = client.get("/group/new")
     assert rv.status_code == 200
     assert b"Group Details" in rv.data
+    assert b"Entra Group Link or Group ID" in rv.data
     assert b"After creating the group, you will be taken to the group page" in rv.data
     assert b"tag-suggestions" in rv.data
     assert b"Edit SQL Manually (Override)" not in rv.data
@@ -1044,6 +1073,7 @@ def test_group_new_duplicate_prefills_fields_and_blanks_name_handle(client, app_
     source_cfg["tags"] = ["alpha", "beta"]
     source_cfg["email_recipient"] = "source@example.com"
     source_cfg["output_dir"] = "/tmp/out"
+    source_cfg["entra_group_id"] = "1b447e90-6f3a-4ab4-aa09-64ad80861b43"
     source_cfg_path.write_text(yaml.safe_dump(source_cfg), encoding="utf-8")
 
     rv = client.get("/group/new?duplicate_from=source_dup")
@@ -1055,6 +1085,7 @@ def test_group_new_duplicate_prefills_fields_and_blanks_name_handle(client, app_
     assert b'name="tags" value="alpha,beta"' in rv.data
     assert b'name="email_recipient" value="source@example.com"' in rv.data
     assert b'name="output_dir" value="/tmp/out"' in rv.data
+    assert b'name="entra_group_link" value="1b447e90-6f3a-4ab4-aa09-64ad80861b43"' in rv.data
     assert b'name="duplicate_from" value="source_dup"' in rv.data
 
 
@@ -1069,6 +1100,7 @@ def test_group_new_post_redirects_to_edit_page_without_query(client, app_workspa
             "tags": "demo, leadership",
             "email_recipient": "owner@example.com",
             "output_dir": "",
+            "entra_group_link": "https://entra.microsoft.com/?pwa=1#view/Microsoft_AAD_IAM/GroupDetailsMenuBlade/~/Properties/groupId/1b447e90-6f3a-4ab4-aa09-64ad80861b43/menuId/",
         },
         follow_redirects=False,
     )
@@ -1082,6 +1114,36 @@ def test_group_new_post_redirects_to_edit_page_without_query(client, app_workspa
     assert cfg.get("display_name") == "New Group"
     assert cfg.get("tags") == ["demo", "leadership"]
     assert cfg.get("email_recipient") == "owner@example.com"
+    assert cfg.get("entra_group_id") == "1b447e90-6f3a-4ab4-aa09-64ad80861b43"
+
+
+def test_group_settings_save_extracts_entra_group_id_and_view_link(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "entra_save")
+
+    rv = client.post(
+        "/group/entra_save",
+        data={
+            "save_scope": "settings",
+            "handle": "entra_save",
+            "display_name": "Entra Save",
+            "tags": "demo",
+            "email_recipient": "",
+            "output_dir": "",
+            "entra_group_link": "https://entra.microsoft.com/?pwa=1#view/Microsoft_AAD_IAM/GroupDetailsMenuBlade/~/GroupMemberships/groupId/00814551-f88c-480c-b479-da91c04809d1/menuId/",
+            "query_mode": "builder",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert rv.status_code == 200
+    payload = rv.get_json() or {}
+    assert payload.get("ok") is True
+    cfg = payload.get("config") or {}
+    assert cfg.get("entra_group_id") == "00814551-f88c-480c-b479-da91c04809d1"
+    assert cfg.get("entra_members_url", "").endswith("/Members/groupId/00814551-f88c-480c-b479-da91c04809d1/menuId/")
+
+    cfg_file = yaml.safe_load((base / "groups" / "entra_save" / "group.yaml").read_text(encoding="utf-8")) or {}
+    assert cfg_file.get("entra_group_id") == "00814551-f88c-480c-b479-da91c04809d1"
 
 
 def test_group_new_duplicate_post_copies_query_configuration(client, app_workspace):
