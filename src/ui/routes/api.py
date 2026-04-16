@@ -98,6 +98,7 @@ def init_api_routes(app, base_path: str):
         # Map field names to column names
         field_map = {
             "job_title": "JOB_TITLE",
+            "location": "LOCATION",
             "bu_code": "BU_CODE", 
             "company": "COMPANY",
             "tree_branch": "TREE_BRANCH",
@@ -132,6 +133,7 @@ def init_api_routes(app, base_path: str):
         # Map field names to column names
         field_map = {
             "job_title": "JOB_TITLE",
+            "location": "LOCATION",
             "bu_code": "BU_CODE",
             "company": "COMPANY", 
             "tree_branch": "TREE_BRANCH",
@@ -168,19 +170,22 @@ def init_api_routes(app, base_path: str):
         """Preview employees selected as hierarchy roots in By Role mode."""
         cfg = config_service.load_general_config()
         job_titles = [value.strip().replace("'", "''") for value in request.args.getlist("job_title") if value.strip()]
+        locations = [value.strip().replace("'", "''") for value in request.args.getlist("location") if value.strip()]
         bu_codes = [value.strip().replace("'", "''") for value in request.args.getlist("bu_code") if value.strip()]
         companies = [value.strip().replace("'", "''") for value in request.args.getlist("company") if value.strip()]
         tree_branches = [value.strip().replace("'", "''") for value in request.args.getlist("tree_branch") if value.strip()]
         department_ids = [value.strip().replace("'", "''") for value in request.args.getlist("department_id") if value.strip()]
 
         # Require at least one attribute to avoid huge unfiltered queries.
-        if not (job_titles or bu_codes or companies or tree_branches or department_ids):
+        if not (job_titles or locations or bu_codes or companies or tree_branches or department_ids):
             return jsonify([])
 
         where_parts = ["status_code != 'T'"]
         if job_titles:
             job_codes = [value.split(" - ", 1)[0].strip() for value in job_titles]
             where_parts.append(_single_or_in_condition("JOB_CODE", job_codes))
+        if locations:
+            where_parts.append(_single_or_in_condition("LOCATION", locations))
         if bu_codes:
             where_parts.append(_single_or_in_condition("BU_CODE", bu_codes))
         if companies:
@@ -234,6 +239,7 @@ def init_api_routes(app, base_path: str):
         attr_map = {
             "job_title": "JOB_CODE",
             "department_id": "DEPARTMENT_ID",
+            "location": "LOCATION",
             "bu_code": "BU_CODE",
             "company": "COMPANY",
             "tree_branch": "TREE_BRANCH",

@@ -81,6 +81,7 @@ def generate_hierarchy_sql(
     attributes_job_code: str = None,
     attributes_job_title_text: str = None,
     attributes_bu_code: str = None,
+    attributes_location: str = None,
     attributes_company: str = None,
     attributes_tree_branch: str = None,
     attributes_department_id: str = None,
@@ -88,6 +89,7 @@ def generate_hierarchy_sql(
     filter_job_codes: list = None,
     filter_job_titles_display: list = None,
     filter_bu_codes: list = None,
+    filter_locations: list = None,
     filter_companies: list = None,
     filter_tree_branches: list = None,
     filter_department_ids: list = None,
@@ -116,6 +118,10 @@ def generate_hierarchy_sql(
         if filter_bu_codes:
             bu_codes_csv = ",".join([f"'{bc}'" for bc in filter_bu_codes])
             filter_where_parts.append(f"cte.BU_CODE IN ({bu_codes_csv})")
+
+        if filter_locations:
+            locations_csv = ",".join([f"'{location}'" for location in filter_locations])
+            filter_where_parts.append(f"cte.LOCATION IN ({locations_csv})")
 
         if filter_department_ids:
             department_ids_csv = ",".join([f"'{d}'" for d in filter_department_ids])
@@ -193,12 +199,14 @@ FROM omsadm.employee_mv cte{where_clause}"""
         if not resolved_job_codes:
             resolved_job_codes = [_extract_job_code(value) for value in _normalize_string_list(attributes_job_title)]
         resolved_bu_codes = _normalize_string_list(attributes_bu_code)
+        resolved_locations = _normalize_string_list(attributes_location)
         resolved_companies = _normalize_string_list(attributes_company)
         resolved_tree_branches = _normalize_string_list(attributes_tree_branch)
         resolved_department_ids = _normalize_string_list(attributes_department_id)
         if not (
             resolved_job_codes
             or resolved_bu_codes
+            or resolved_locations
             or resolved_companies
             or resolved_tree_branches
             or resolved_department_ids
@@ -213,6 +221,9 @@ FROM omsadm.employee_mv cte{where_clause}"""
         bu_code_condition = _single_or_in_condition("BU_CODE", resolved_bu_codes)
         if bu_code_condition:
             where_parts.append(f"AND {bu_code_condition}")
+        location_condition = _single_or_in_condition("LOCATION", resolved_locations)
+        if location_condition:
+            where_parts.append(f"AND {location_condition}")
         company_condition = _single_or_in_condition("COMPANY", resolved_companies)
         if company_condition:
             where_parts.append(f"AND {company_condition}")
@@ -250,6 +261,7 @@ FROM omsadm.employee_mv cte{where_clause}"""
        JOB_CODE,
        DEPARTMENT_ID,
        BU_CODE,
+    LOCATION,
        COMPANY,
        TREE_BRANCH,
        FULL_PART_TIME
@@ -267,6 +279,7 @@ WHERE status_code != 'T'
        JOB_CODE,
        DEPARTMENT_ID,
        BU_CODE,
+    LOCATION,
        COMPANY,
        TREE_BRANCH,
        FULL_PART_TIME
@@ -301,6 +314,7 @@ WHERE status_code != 'T'
          JOB_CODE,
         DEPARTMENT_ID,
        BU_CODE,
+             LOCATION,
        COMPANY,
        TREE_BRANCH,
        FULL_PART_TIME,
@@ -318,6 +332,7 @@ AND status_code != 'T'{connect_by_exclude}""")
         JOB_CODE,
         DEPARTMENT_ID,
        BU_CODE,
+        LOCATION,
        COMPANY,
        TREE_BRANCH,
        FULL_PART_TIME,
@@ -338,6 +353,10 @@ AND status_code != 'T'{f" AND USERNAME <> '{person_username}'" if mode=='by_pers
     if filter_bu_codes:
         bu_codes_csv = ",".join([f"'{bc}'" for bc in filter_bu_codes])
         filter_where_parts.append(f"cte.BU_CODE IN ({bu_codes_csv})")
+
+    if filter_locations:
+        locations_csv = ",".join([f"'{location}'" for location in filter_locations])
+        filter_where_parts.append(f"cte.LOCATION IN ({locations_csv})")
 
     if filter_department_ids:
         department_ids_csv = ",".join([f"'{d}'" for d in filter_department_ids])
@@ -442,6 +461,7 @@ def _block_filters(block: dict) -> dict:
         "filter_job_codes": job_codes,
         "filter_job_titles_display": job_titles_display,
         "filter_bu_codes": filters.get("bu_codes") if isinstance(filters.get("bu_codes"), list) else (block.get("filter_bu_codes") or []),
+        "filter_locations": filters.get("locations") if isinstance(filters.get("locations"), list) else (block.get("filter_locations") or []),
         "filter_companies": filters.get("companies") if isinstance(filters.get("companies"), list) else (block.get("filter_companies") or []),
         "filter_tree_branches": filters.get("tree_branches") if isinstance(filters.get("tree_branches"), list) else (block.get("filter_tree_branches") or []),
         "filter_department_ids": filters.get("department_ids") if isinstance(filters.get("department_ids"), list) else (block.get("filter_department_ids") or []),
@@ -513,6 +533,7 @@ def _block_to_sql(block: dict) -> str:
         resolved_job_codes = attrs.get("job_codes") or ([attrs.get("job_code")] if attrs.get("job_code") else []) or block.get("attributes_job_codes") or block.get("attributes_job_code")
         resolved_job_titles = attrs.get("job_titles") or attrs.get("job_title_texts") or ([attrs.get("job_title")] if attrs.get("job_title") else []) or block.get("attributes_job_titles") or block.get("attributes_job_title")
         resolved_bu_codes = attrs.get("bu_codes") or ([attrs.get("bu_code")] if attrs.get("bu_code") else []) or block.get("attributes_bu_codes") or block.get("attributes_bu_code")
+        resolved_locations = attrs.get("locations") or ([attrs.get("location")] if attrs.get("location") else []) or block.get("attributes_locations") or block.get("attributes_location")
         resolved_companies = attrs.get("companies") or ([attrs.get("company")] if attrs.get("company") else []) or block.get("attributes_companies") or block.get("attributes_company")
         resolved_tree_branches = attrs.get("tree_branches") or ([attrs.get("tree_branch")] if attrs.get("tree_branch") else []) or block.get("attributes_tree_branches") or block.get("attributes_tree_branch")
         resolved_department_ids = attrs.get("department_ids") or ([attrs.get("department_id")] if attrs.get("department_id") else []) or block.get("attributes_department_ids") or block.get("attributes_department_id")
@@ -521,6 +542,7 @@ def _block_to_sql(block: dict) -> str:
             resolved_job_codes
             or resolved_job_titles
             or resolved_bu_codes
+            or resolved_locations
             or resolved_companies
             or resolved_tree_branches
             or resolved_department_ids
@@ -534,6 +556,7 @@ def _block_to_sql(block: dict) -> str:
             attributes_job_code=resolved_job_codes,
             attributes_job_title_text=resolved_job_titles,
             attributes_bu_code=resolved_bu_codes,
+            attributes_location=resolved_locations,
             attributes_company=resolved_companies,
             attributes_tree_branch=resolved_tree_branches,
             attributes_department_id=resolved_department_ids,

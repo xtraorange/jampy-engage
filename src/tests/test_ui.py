@@ -719,10 +719,12 @@ def test_query_builder_routes(client, monkeypatch):
     assert b"btn-test-query-modal" in response.data
     assert b"btn-explain-query" in response.data
     assert b"query-test-modal" in response.data
+    assert b"attr-location-tags" in response.data
     assert b"attr-bu-code-tags" in response.data
     assert b"attr-company-tags" in response.data
     assert b"attr-tree-branch-tags" in response.data
     assert b"attr-department-id-tags" in response.data
+    assert b"filter-locations-tags" in response.data
     assert b"Refresh All Block Counts" in response.data
     assert b"Build Parameters from Person(s)" in response.data
     assert b"Replace Existing" in response.data
@@ -733,9 +735,11 @@ def test_query_builder_routes(client, monkeypatch):
     assert response.status_code == 200
     assert b"Building query for Demo Group (demo_group)" in response.data
 
-    # Department ID should appear before BU in both by-role attributes and filters.
+    # Department ID should appear before Location and BU in both by-role attributes and filters.
     assert response.data.find(b"attr-department-id-tags") < response.data.find(b"attr-bu-code-tags")
+    assert response.data.find(b"attr-location-tags") < response.data.find(b"attr-bu-code-tags")
     assert response.data.find(b"filter-department-ids-tags") < response.data.find(b"filter-bu-codes-tags")
+    assert response.data.find(b"filter-locations-tags") < response.data.find(b"filter-bu-codes-tags")
 
     response = client.get("/tag/new")
     assert response.status_code == 200
@@ -744,15 +748,16 @@ def test_query_builder_routes(client, monkeypatch):
     response = client.get("/api/search-employees?q=test")
     assert response.status_code in [200, 500]
 
-    for field in ["job_title", "bu_code", "company", "tree_branch", "department_id"]:
+    for field in ["job_title", "location", "bu_code", "company", "tree_branch", "department_id"]:
         response = client.get(f"/api/search-values?field={field}&q=test")
         assert response.status_code == 200
         assert any("UPPER" in sql for sql in called["sql"])
 
     response = client.get(
-        "/api/preview-role-roots?bu_code=BU1&bu_code=BU2&department_id=02SA23&department_id=77ZZ99"
+        "/api/preview-role-roots?location=MN&location=WI&bu_code=BU1&bu_code=BU2&department_id=02SA23&department_id=77ZZ99"
     )
     assert response.status_code == 200
+    assert any("LOCATION IN ('MN','WI')" in sql for sql in called["sql"])
     assert any("BU_CODE IN ('BU1','BU2')" in sql for sql in called["sql"])
     assert any("DEPARTMENT_ID IN ('02SA23','77ZZ99')" in sql for sql in called["sql"])
 
@@ -768,6 +773,7 @@ def test_query_builder_routes(client, monkeypatch):
         json={
             "mode": "by_person",
             "person_id": "00001",
+            "filter_locations": ["MN"],
             "filter_bu_codes": ["abc"],
             "filter_job_titles": ["mgr"],
         },
@@ -775,6 +781,7 @@ def test_query_builder_routes(client, monkeypatch):
     assert response.status_code in [200, 400]
     if response.status_code == 200:
         sql = response.get_json().get("sql", "")
+        assert "LOCATION" in sql
         assert "BU_CODE" in sql
         assert "JOB_CODE" in sql
 

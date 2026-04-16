@@ -113,7 +113,7 @@
       <h5 class="mb-0">Build By Role Parameters From People</h5>
       <button type="button" class="btn-close" id="role-seed-close" aria-label="Close"></button>
     </div>
-    <div class="card-body">
+    <div class="card-body role-seed-scroll-body">
       <div class="mb-3">
         <label for="role-seed-person-search" class="form-label">Find Person(s)</label>
         <input type="text" class="form-control" id="role-seed-person-search" placeholder="Search by ID, name, or username...">
@@ -280,6 +280,11 @@
     margin: 6vh auto;
     z-index: 1;
   }
+
+  .role-seed-scroll-body {
+    max-height: min(70vh, 760px);
+    overflow-y: auto;
+  }
 </style>
 
 <script>
@@ -301,6 +306,7 @@
   let roleSeedChecked = {
     job_title: true,
     department_id: true,
+    location: false,
     bu_code: false,
     company: false,
     tree_branch: false,
@@ -314,6 +320,7 @@
   const ROLE_ATTR_ROWS = [
     { key: 'job_title', label: 'Job Title/Code', attrKey: 'job_titles_display' },
     { key: 'department_id', label: 'Department ID', attrKey: 'department_ids' },
+    { key: 'location', label: 'Location', attrKey: 'locations' },
     { key: 'bu_code', label: 'Business Unit', attrKey: 'bu_codes' },
     { key: 'company', label: 'Company', attrKey: 'companies' },
     { key: 'tree_branch', label: 'Tree Branch', attrKey: 'tree_branches' },
@@ -373,6 +380,7 @@
     return {
       job_titles_display: [],
       job_codes: [],
+      locations: [],
       bu_codes: [],
       companies: [],
       tree_branches: [],
@@ -405,6 +413,7 @@
           job_titles_display: [],
           job_codes: [],
           job_title_texts: [],
+          locations: [],
           bu_codes: [],
           companies: [],
           tree_branches: [],
@@ -466,6 +475,7 @@
       job_titles_display: asArray(attrs.job_titles_display || attrs.job_title_display),
       job_codes: asArray(attrs.job_codes || attrs.job_code),
       job_title_texts: asArray(attrs.job_title_texts || attrs.job_title_text || attrs.job_title),
+      locations: asArray(attrs.locations || attrs.location),
       bu_codes: asArray(attrs.bu_codes || attrs.bu_code),
       companies: asArray(attrs.companies || attrs.company),
       tree_branches: asArray(attrs.tree_branches || attrs.tree_branch),
@@ -477,6 +487,7 @@
     const f = (block && block.filters) || {};
     return (
       (Array.isArray(f.job_titles_display) && f.job_titles_display.length > 0)
+      || (Array.isArray(f.locations) && f.locations.length > 0)
       || (Array.isArray(f.bu_codes) && f.bu_codes.length > 0)
       || (Array.isArray(f.companies) && f.companies.length > 0)
       || (Array.isArray(f.tree_branches) && f.tree_branches.length > 0)
@@ -496,6 +507,7 @@
       const attrs = normalizeRoleAttributes(block.attributes);
       const parts = [
         ...(attrs.job_titles_display || []),
+        ...(attrs.locations || []),
         ...(attrs.bu_codes || []),
         ...(attrs.companies || []),
         ...(attrs.tree_branches || []),
@@ -520,6 +532,9 @@
     }
     if (Array.isArray(f.department_ids) && f.department_ids.length > 0) {
       details.push(`Department IDs: ${f.department_ids.join(', ')}`);
+    }
+    if (Array.isArray(f.locations) && f.locations.length > 0) {
+      details.push(`Locations: ${f.locations.join(', ')}`);
     }
     if (Array.isArray(f.bu_codes) && f.bu_codes.length > 0) {
       details.push(`Business Units: ${f.bu_codes.join(', ')}`);
@@ -637,6 +652,7 @@
         job_titles_display: attrs.job_titles_display || [],
         job_codes: attrs.job_codes || [],
         job_title_texts: attrs.job_title_texts || [],
+        locations: attrs.locations || [],
         bu_codes: attrs.bu_codes || [],
         companies: attrs.companies || [],
         tree_branches: attrs.tree_branches || [],
@@ -665,6 +681,7 @@
       payload.filters = {
         job_titles_display: block.filters.job_titles_display || [],
         job_codes: block.filters.job_codes || [],
+        locations: block.filters.locations || [],
         bu_codes: block.filters.bu_codes || [],
         companies: block.filters.companies || [],
         tree_branches: block.filters.tree_branches || [],
@@ -1187,6 +1204,12 @@
             <div id="filter-department-ids-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
           </div>
           <div class="mb-3">
+            <label for="filter-locations" class="form-label">Location(s)</label>
+            <div id="filter-locations-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+            <input type="text" class="form-control" id="filter-locations" placeholder="Type to search...">
+            <div id="filter-locations-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+          </div>
+          <div class="mb-3">
             <label for="filter-bu-codes" class="form-label">Business Unit(s)</label>
             <div id="filter-bu-codes-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
             <input type="text" class="form-control" id="filter-bu-codes" placeholder="Type to search...">
@@ -1287,6 +1310,12 @@
           <div id="attr-department-id-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
           <input type="text" class="form-control" id="attr-department-id" placeholder="Type to search...">
           <div id="attr-department-id-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
+        </div>
+        <div class="mb-3">
+          <label for="attr-location" class="form-label">Location</label>
+          <div id="attr-location-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
+          <input type="text" class="form-control" id="attr-location" placeholder="Type to search...">
+          <div id="attr-location-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="mb-3">
           <label for="attr-bu-code" class="form-label">Business Unit</label>
@@ -1477,6 +1506,7 @@
 
     const params = new URLSearchParams();
     (attrs.job_titles_display || []).forEach((value) => params.append('job_title', value));
+    (attrs.locations || []).forEach((value) => params.append('location', value));
     (attrs.bu_codes || []).forEach((value) => params.append('bu_code', value));
     (attrs.companies || []).forEach((value) => params.append('company', value));
     (attrs.tree_branches || []).forEach((value) => params.append('tree_branch', value));
@@ -1556,6 +1586,7 @@
 
     [
       ['attr-department-id-tags', 'attr-department-id', 'attr-department-id-suggestions', 'department_id', 'department_ids'],
+      ['attr-location-tags', 'attr-location', 'attr-location-suggestions', 'location', 'locations'],
       ['attr-bu-code-tags', 'attr-bu-code', 'attr-bu-code-suggestions', 'bu_code', 'bu_codes'],
       ['attr-company-tags', 'attr-company', 'attr-company-suggestions', 'company', 'companies'],
       ['attr-tree-branch-tags', 'attr-tree-branch', 'attr-tree-branch-suggestions', 'tree_branch', 'tree_branches'],
@@ -1640,6 +1671,13 @@
     }
 
     const f = block.filters;
+    if (!Array.isArray(f.job_titles_display)) f.job_titles_display = [];
+    if (!Array.isArray(f.job_codes)) f.job_codes = [];
+    if (!Array.isArray(f.department_ids)) f.department_ids = [];
+    if (!Array.isArray(f.locations)) f.locations = [];
+    if (!Array.isArray(f.bu_codes)) f.bu_codes = [];
+    if (!Array.isArray(f.companies)) f.companies = [];
+    if (!Array.isArray(f.tree_branches)) f.tree_branches = [];
     renderTagList('filter-job-titles-tags', f.job_titles_display || [], (idx) => {
       f.job_titles_display.splice(idx, 1);
       f.job_codes.splice(idx, 1);
@@ -1650,6 +1688,13 @@
     });
     renderTagList('filter-bu-codes-tags', f.bu_codes || [], (idx) => {
       f.bu_codes.splice(idx, 1);
+      markDirty();
+      bindFilterEditor(block);
+      renderBlocksList();
+      updateSQL();
+    });
+    renderTagList('filter-locations-tags', f.locations || [], (idx) => {
+      f.locations.splice(idx, 1);
       markDirty();
       bindFilterEditor(block);
       renderBlocksList();
@@ -1699,6 +1744,15 @@
     wireValueSearch('filter-bu-codes', 'filter-bu-codes-suggestions', 'bu_code', (value) => {
       if (!f.bu_codes.includes(value)) {
         f.bu_codes.push(value);
+        markDirty();
+        bindFilterEditor(block);
+        renderBlocksList();
+        updateSQL();
+      }
+    });
+    wireValueSearch('filter-locations', 'filter-locations-suggestions', 'location', (value) => {
+      if (!f.locations.includes(value)) {
+        f.locations.push(value);
         markDirty();
         bindFilterEditor(block);
         renderBlocksList();
@@ -2048,6 +2102,7 @@
       return code || title;
     }
     if (key === 'department_id') return String(person.department_id || '').trim();
+    if (key === 'location') return String(person.location || '').trim();
     if (key === 'bu_code') return String(person.bu_code || '').trim();
     if (key === 'company') return String(person.company || '').trim();
     if (key === 'tree_branch') return String(person.tree_branch || '').trim();
@@ -2209,6 +2264,7 @@
       attributes: {
         job_title: roleSeedAttributeValues('job_title'),
         department_id: roleSeedAttributeValues('department_id'),
+        location: roleSeedAttributeValues('location'),
         bu_code: roleSeedAttributeValues('bu_code'),
         company: roleSeedAttributeValues('company'),
         tree_branch: roleSeedAttributeValues('tree_branch'),
@@ -2242,6 +2298,7 @@
     const params = new URLSearchParams();
     if (roleSeedChecked.job_title) roleSeedAttributeValues('job_title').forEach((value) => params.append('job_title', value));
     if (roleSeedChecked.department_id) roleSeedAttributeValues('department_id').forEach((value) => params.append('department_id', value));
+    if (roleSeedChecked.location) roleSeedAttributeValues('location').forEach((value) => params.append('location', value));
     if (roleSeedChecked.bu_code) roleSeedAttributeValues('bu_code').forEach((value) => params.append('bu_code', value));
     if (roleSeedChecked.company) roleSeedAttributeValues('company').forEach((value) => params.append('company', value));
     if (roleSeedChecked.tree_branch) roleSeedAttributeValues('tree_branch').forEach((value) => params.append('tree_branch', value));
@@ -2301,6 +2358,7 @@
       attributes.job_codes,
       attributes.job_title_texts,
       attributes.department_ids,
+      attributes.locations,
       attributes.bu_codes,
       attributes.companies,
       attributes.tree_branches,
@@ -2314,6 +2372,7 @@
     roleSeedChecked = {
       job_title: Array.isArray(block.attributes?.job_titles_display) && block.attributes.job_titles_display.length > 0,
       department_id: Array.isArray(block.attributes?.department_ids) && block.attributes.department_ids.length > 0,
+      location: Array.isArray(block.attributes?.locations) && block.attributes.locations.length > 0,
       bu_code: Array.isArray(block.attributes?.bu_codes) && block.attributes.bu_codes.length > 0,
       company: Array.isArray(block.attributes?.companies) && block.attributes.companies.length > 0,
       tree_branch: Array.isArray(block.attributes?.tree_branches) && block.attributes.tree_branches.length > 0,
@@ -2533,6 +2592,9 @@
       if (roleSeedChecked.department_id) {
         block.attributes.department_ids = mergeUniqueInto(block.attributes.department_ids, roleSeedAttributeValues('department_id'));
       }
+      if (roleSeedChecked.location) {
+        block.attributes.locations = mergeUniqueInto(block.attributes.locations, roleSeedAttributeValues('location'));
+      }
       if (roleSeedChecked.bu_code) {
         block.attributes.bu_codes = mergeUniqueInto(block.attributes.bu_codes, roleSeedAttributeValues('bu_code'));
       }
@@ -2598,6 +2660,7 @@
           ...defaultFilters(),
           job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
           job_codes: params.filter_job_codes || [],
+          locations: params.filter_locations || [],
           bu_codes: params.filter_bu_codes || [],
           companies: params.filter_companies || [],
           tree_branches: params.filter_tree_branches || [],
@@ -2612,6 +2675,7 @@
           job_titles_display: params.attributes_job_title_display ? [params.attributes_job_title_display] : [],
           job_codes: params.attributes_job_code ? [params.attributes_job_code] : [],
           job_title_texts: (params.attributes_job_title_text || params.attributes_job_title) ? [params.attributes_job_title_text || params.attributes_job_title] : [],
+          locations: params.attributes_location ? [params.attributes_location] : [],
           bu_codes: params.attributes_bu_code ? [params.attributes_bu_code] : [],
           companies: params.attributes_company ? [params.attributes_company] : [],
           tree_branches: params.attributes_tree_branch ? [params.attributes_tree_branch] : [],
@@ -2622,6 +2686,7 @@
           ...defaultFilters(),
           job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
           job_codes: params.filter_job_codes || [],
+          locations: params.filter_locations || [],
           bu_codes: params.filter_bu_codes || [],
           companies: params.filter_companies || [],
           tree_branches: params.filter_tree_branches || [],
@@ -2636,6 +2701,7 @@
           ...defaultFilters(),
           job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
           job_codes: params.filter_job_codes || [],
+          locations: params.filter_locations || [],
           bu_codes: params.filter_bu_codes || [],
           companies: params.filter_companies || [],
           tree_branches: params.filter_tree_branches || [],

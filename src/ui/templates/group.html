@@ -503,6 +503,7 @@
     return {
       job_titles_display: [],
       job_codes: [],
+      locations: [],
       bu_codes: [],
       companies: [],
       tree_branches: [],
@@ -533,6 +534,7 @@
           job_titles_display: [],
           job_codes: [],
           job_title_texts: [],
+          locations: [],
           bu_codes: [],
           companies: [],
           tree_branches: [],
@@ -575,6 +577,7 @@
             job_titles_display: asArray(block.attributes?.job_titles_display || block.attributes?.job_title_display),
             job_codes: asArray(block.attributes?.job_codes || block.attributes?.job_code),
             job_title_texts: asArray(block.attributes?.job_title_texts || block.attributes?.job_title_text || block.attributes?.job_title),
+            locations: asArray(block.attributes?.locations || block.attributes?.location),
             bu_codes: asArray(block.attributes?.bu_codes || block.attributes?.bu_code),
             companies: asArray(block.attributes?.companies || block.attributes?.company),
             tree_branches: asArray(block.attributes?.tree_branches || block.attributes?.tree_branch),
@@ -604,6 +607,7 @@
           ...defaultFilters(),
           job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
           job_codes: params.filter_job_codes || [],
+            locations: params.filter_locations || [],
           bu_codes: params.filter_bu_codes || [],
           companies: params.filter_companies || [],
           tree_branches: params.filter_tree_branches || [],
@@ -618,6 +622,7 @@
           job_titles_display: params.attributes_job_title_display ? [params.attributes_job_title_display] : [],
           job_codes: params.attributes_job_code ? [params.attributes_job_code] : [],
           job_title_texts: (params.attributes_job_title_text || params.attributes_job_title) ? [params.attributes_job_title_text || params.attributes_job_title] : [],
+          locations: params.attributes_location ? [params.attributes_location] : [],
           bu_codes: params.attributes_bu_code ? [params.attributes_bu_code] : [],
           companies: params.attributes_company ? [params.attributes_company] : [],
           tree_branches: params.attributes_tree_branch ? [params.attributes_tree_branch] : [],
@@ -628,6 +633,7 @@
           ...defaultFilters(),
           job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
           job_codes: params.filter_job_codes || [],
+          locations: params.filter_locations || [],
           bu_codes: params.filter_bu_codes || [],
           companies: params.filter_companies || [],
           tree_branches: params.filter_tree_branches || [],
@@ -642,6 +648,7 @@
           ...defaultFilters(),
           job_titles_display: params.filter_job_titles_display || params.filter_job_titles || [],
           job_codes: params.filter_job_codes || [],
+          locations: params.filter_locations || [],
           bu_codes: params.filter_bu_codes || [],
           companies: params.filter_companies || [],
           tree_branches: params.filter_tree_branches || [],
@@ -693,6 +700,7 @@
             : attrs.job_codes || [];
           const attrValues = [
             ...roleTitleValues,
+            ...(attrs.locations || []),
             ...(attrs.bu_codes || []),
             ...(attrs.companies || []),
             ...(attrs.tree_branches || []),
@@ -715,7 +723,7 @@
           ? (filters.job_titles_display || [])
           : (filters.job_codes || []);
         const filterTags = [
-          ...titleFilterTags, ...(filters.bu_codes || []), ...(filters.companies || []),
+          ...titleFilterTags, ...(filters.locations || []), ...(filters.bu_codes || []), ...(filters.companies || []),
           ...(filters.tree_branches || []), ...(filters.department_ids || []),
           ...(filters.full_part_time ? [`Full/Part Time: ${filters.full_part_time}`] : []),
         ];

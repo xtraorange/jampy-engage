@@ -110,6 +110,7 @@ def _normalized_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
         "job_titles_display": _as_list(filters.get("job_titles_display") or filters.get("job_title_display") or filters.get("job_titles") or []),
         "job_codes": _as_list(filters.get("job_codes") or filters.get("job_code") or []),
         "bu_codes": _as_list(filters.get("bu_codes") or filters.get("bu_code") or []),
+        "locations": _as_list(filters.get("locations") or filters.get("location") or []),
         "companies": _as_list(filters.get("companies") or filters.get("company") or []),
         "tree_branches": _as_list(filters.get("tree_branches") or filters.get("tree_branch") or []),
         "department_ids": _as_list(filters.get("department_ids") or filters.get("department_id") or []),
@@ -121,6 +122,7 @@ def _filter_lines(filters: Dict[str, Any]) -> List[str]:
     f = _normalized_filters(filters)
     lines: List[str] = []
     lines.extend(_lines_for_values("Has a title/code of", f.get("job_titles_display") or f.get("job_codes")))
+    lines.extend(_lines_for_values("Is in location", f.get("locations")))
     lines.extend(_lines_for_values("Is in business unit", f.get("bu_codes")))
     lines.extend(_lines_for_values("Is in company", f.get("companies")))
     lines.extend(_lines_for_values("Has a location/tree branch of", f.get("tree_branches")))
@@ -149,6 +151,7 @@ def _normalize_blocks(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "filters": {
                     "job_titles_display": payload.get("filter_job_titles_display") or payload.get("filter_job_titles") or [],
                     "job_codes": payload.get("filter_job_codes") or [],
+                    "locations": payload.get("filter_locations") or [],
                     "bu_codes": payload.get("filter_bu_codes") or [],
                     "companies": payload.get("filter_companies") or [],
                     "tree_branches": payload.get("filter_tree_branches") or [],
@@ -165,6 +168,7 @@ def _normalize_blocks(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "attributes": {
                     "job_titles_display": payload.get("attributes_job_title_display") or [],
                     "job_codes": payload.get("attributes_job_code") or [],
+                    "locations": payload.get("attributes_location") or [],
                     "bu_codes": payload.get("attributes_bu_code") or [],
                     "companies": payload.get("attributes_company") or [],
                     "tree_branches": payload.get("attributes_tree_branch") or [],
@@ -175,6 +179,7 @@ def _normalize_blocks(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "filters": {
                     "job_titles_display": payload.get("filter_job_titles_display") or payload.get("filter_job_titles") or [],
                     "job_codes": payload.get("filter_job_codes") or [],
+                    "locations": payload.get("filter_locations") or [],
                     "bu_codes": payload.get("filter_bu_codes") or [],
                     "companies": payload.get("filter_companies") or [],
                     "tree_branches": payload.get("filter_tree_branches") or [],
@@ -190,6 +195,7 @@ def _normalize_blocks(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             "filters": {
                 "job_titles_display": payload.get("filter_job_titles_display") or payload.get("filter_job_titles") or [],
                 "job_codes": payload.get("filter_job_codes") or [],
+                "locations": payload.get("filter_locations") or [],
                 "bu_codes": payload.get("filter_bu_codes") or [],
                 "companies": payload.get("filter_companies") or [],
                 "tree_branches": payload.get("filter_tree_branches") or [],
@@ -225,6 +231,7 @@ def _describe_block(block: Dict[str, Any]) -> str:
         attrs = block.get("attributes") or {}
         role_lines: List[str] = []
         role_lines.extend(_lines_for_values("Title/code", attrs.get("job_titles_display") or attrs.get("job_codes")))
+        role_lines.extend(_lines_for_values("Location", attrs.get("locations")))
         role_lines.extend(_lines_for_values("Business unit", attrs.get("bu_codes")))
         role_lines.extend(_lines_for_values("Company", attrs.get("companies")))
         role_lines.extend(_lines_for_values("Location/tree branch", attrs.get("tree_branches")))

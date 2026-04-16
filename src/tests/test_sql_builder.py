@@ -9,6 +9,7 @@ def test_hierarchy_sql_contains_filter_columns():
         mode="by_person",
         person_id="123",
         filter_job_titles=["mgr"],
+        filter_locations=["MN"],
         filter_bu_codes=["bu1"],
         filter_companies=["US"],
         filter_tree_branches=["A"],
@@ -19,6 +20,7 @@ def test_hierarchy_sql_contains_filter_columns():
     assert "TREE_BRANCH" in sql
     # filters should reference the cte alias
     assert "cte.JOB_CODE" in sql
+    assert "cte.LOCATION" in sql
     assert "cte.BU_CODE" in sql
 
 
@@ -139,6 +141,7 @@ def test_block_builder_role_block_with_filters():
                 },
                 "filters": {
                     "job_titles_display": ["000760 - Some Title"],
+                    "locations": ["MN"],
                     "bu_codes": ["BU1"],
                 },
             }
@@ -147,6 +150,7 @@ def test_block_builder_role_block_with_filters():
     assert "JOB_CODE = '000545'" in sql
     assert "DEPARTMENT_ID = '02SA23'" in sql
     assert "cte.JOB_CODE IN ('000760')" in sql
+    assert "cte.LOCATION IN ('MN')" in sql
     assert "cte.BU_CODE IN ('BU1')" in sql
 
 
@@ -155,10 +159,12 @@ def test_by_role_mode_supports_multiple_attribute_values():
         mode="by_role",
         attributes_job_code=["000545", "000760"],
         attributes_department_id=["02SA23", "77ZZ99"],
+        attributes_location=["MN", "WI"],
         attributes_bu_code=["BU1", "BU2"],
     )
     assert "JOB_CODE IN ('000545','000760')" in sql
     assert "DEPARTMENT_ID IN ('02SA23','77ZZ99')" in sql
+    assert "LOCATION IN ('MN','WI')" in sql
     assert "BU_CODE IN ('BU1','BU2')" in sql
 
 
