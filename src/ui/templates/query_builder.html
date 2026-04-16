@@ -1,14 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}Query Builder{% endblock %}
+{% block title %}{% if adhoc_mode %}Ad Hoc Query Builder{% else %}Query Builder{% endif %}{% endblock %}
 
 {% block content %}
 
+<script src="{{ url_for('static', filename='js/employee_search.js') }}"></script>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
+    {% if adhoc_mode %}
+    <div class="text-muted small mb-1"><a href="{{ url_for('main.adhoc_index') }}">Ad Hoc</a> / Query Builder</div>
+    <h1 class="mb-0">Ad Hoc Query Builder</h1>
+    <div class="text-muted small mt-1">Build a query, get a count, and export a report without saving a group.</div>
+    {% else %}
     <h1 class="mb-0">Query Builder</h1>
     {% if group_name or group_handle %}
     <div class="text-muted small mt-1">Building query for {{ group_name or group_handle }}{% if group_handle and group_name and group_handle != group_name %} ({{ group_handle }}){% endif %}</div>
+    {% endif %}
     {% endif %}
   </div>
 </div>
@@ -77,14 +85,38 @@
           <h5 class="mb-0">Actions</h5>
         </div>
         <div class="card-body">
-          <button type="button" id="btn-accept-sql" class="btn btn-success w-100 mb-2" style="display: none;">Accept This Query</button>
+          <button type="button" id="btn-accept-sql" class="btn btn-success w-100 mb-2" style="display: none;">{% if adhoc_mode %}Download Query CSV{% else %}Accept This Query{% endif %}</button>
+          {% if adhoc_mode %}
+          <button type="button" id="btn-create-group" class="btn btn-outline-success w-100 mb-2" style="display: none;">Create New Group from Query</button>
+          {% endif %}
           <button type="button" id="btn-test-query-modal" class="btn btn-outline-primary w-100 mb-2" style="display: none;">Test Query</button>
           <button type="button" id="btn-explain-query" class="btn btn-outline-secondary w-100 mb-2" style="display: none;">Plain-English Summary</button>
+          {% if not adhoc_mode %}
           <button type="button" id="btn-edit-sql" class="btn btn-warning w-100 mb-2">Edit SQL Manually</button>
+          {% endif %}
           <button type="button" id="btn-cancel" class="btn btn-outline-secondary w-100">Cancel</button>
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+{% if adhoc_mode %}
+<form id="adhoc-query-download-form" method="post" action="{{ url_for('main.adhoc_query_builder_download') }}" hidden>
+  <input type="hidden" name="sql" id="adhoc-query-download-sql">
+</form>
+{% endif %}
+
+<div id="query-builder-loading-overlay" class="position-fixed top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="display: none; background-color: rgba(0, 0, 0, 0.45); z-index: 9999;">
+  <div class="card text-center p-4" style="min-width: 360px; max-width: 520px;">
+    <div class="mb-3">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+    <h5 class="mb-1" id="query-builder-loading-phase">Working</h5>
+    <p class="text-muted mb-1" id="query-builder-loading-detail">Processing request...</p>
+    <small class="text-muted" id="query-builder-loading-subdetail"></small>
   </div>
 </div>
 
@@ -116,7 +148,10 @@
     <div class="card-body role-seed-scroll-body">
       <div class="mb-3">
         <label for="role-seed-person-search" class="form-label">Find Person(s)</label>
-        <input type="text" class="form-control" id="role-seed-person-search" placeholder="Search by ID, name, or username...">
+        <div class="input-group">
+          <input type="text" class="form-control" id="role-seed-person-search" placeholder="Type name or username...">
+          <button type="button" class="btn btn-outline-secondary" id="role-seed-advanced-search">Advanced Search</button>
+        </div>
         <div id="role-seed-person-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 220px; overflow-y: auto;"></div>
       </div>
       <div class="mb-3">
@@ -316,6 +351,16 @@
   let queryExplainModal = null;
   let queryTestPage = 1;
   const QUERY_TEST_PAGE_SIZE = 100;
+  const isAdhocMode = {{ 'true' if adhoc_mode else 'false' }};
+  const cancelUrl = {{ cancel_url|tojson }};
+
+  function showBuilderLoading(phase, detail, subdetail) {
+    const overlay = document.getElementById('query-builder-loading-overlay');
+    document.getElementById('query-builder-loading-phase').textContent = phase || 'Working';
+    document.getElementById('query-builder-loading-detail').textContent = detail || 'Processing request...';
+    document.getElementById('query-builder-loading-subdetail').textContent = subdetail || '';
+    overlay.style.display = 'flex';
+  }
 
   const ROLE_ATTR_ROWS = [
     { key: 'job_title', label: 'Job Title/Code', attrKey: 'job_titles_display' },
@@ -347,6 +392,9 @@
   }
 
   function confirmLeaveIfDirty() {
+    if (isAdhocMode) {
+      return true;
+    }
     if (!hasUnsavedChanges || allowExit) {
       return true;
     }
@@ -848,177 +896,17 @@
   }
 
   function wireEmployeeSearch(inputId, listId, onPick) {
-    const input = document.getElementById(inputId);
-    const list = document.getElementById(listId);
-    if (!input || !list) return;
+    if (!window.EmployeeSearch || typeof window.EmployeeSearch.bindTypeahead !== 'function') return;
+    const advancedButtonId = inputId === 'person-search'
+      ? 'person-search-advanced-btn'
+      : (inputId === 'manual-person-search' ? 'manual-person-search-advanced-btn' : null);
 
-    input.setAttribute('autocomplete', 'off');
-    input.setAttribute('autocapitalize', 'off');
-    input.setAttribute('autocorrect', 'off');
-    input.setAttribute('spellcheck', 'false');
-    input.setAttribute('data-lpignore', 'true');
-    input.setAttribute('data-1p-ignore', 'true');
-
-    input._employeeSearchConfig = {
-      list,
+    window.EmployeeSearch.bindTypeahead({
+      inputId,
+      listId,
+      advancedButtonId,
+      advancedTitle: 'Advanced Person Search',
       onPick,
-      timer: input._employeeSearchConfig ? input._employeeSearchConfig.timer : null,
-      activeSuggestionIndex: -1,
-    };
-
-    function setActiveSuggestion(index) {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg) return;
-      cfg.activeSuggestionIndex = index;
-      const items = cfg.list.querySelectorAll('a[data-id]');
-      items.forEach((item, idx) => {
-        item.classList.toggle('active', idx === index);
-      });
-      if (index >= 0 && items[index]) {
-        try { items[index].scrollIntoView({ block: 'nearest' }); } catch (_) {}
-      }
-    }
-
-    function pickEmployeeSuggestion(item) {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg || !item) return;
-      cfg.onPick({
-        id: item.dataset.id,
-        first_name: item.dataset.first,
-        last_name: item.dataset.last,
-        username: item.dataset.username,
-        job_title: item.dataset.jobTitle || '',
-      });
-      input.value = '';
-      cfg.list.style.display = 'none';
-      cfg.activeSuggestionIndex = -1;
-      input.focus();
-    }
-
-    if (input.dataset.employeeSearchBound === '1') {
-      return;
-    }
-    input.dataset.employeeSearchBound = '1';
-
-    input.addEventListener('input', (event) => {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg) return;
-      const query = event.target.value.trim();
-      clearTimeout(cfg.timer);
-      if (query.length < 2) {
-        cfg.activeSuggestionIndex = -1;
-        cfg.list.style.display = 'none';
-        return;
-      }
-
-      cfg.timer = setTimeout(async () => {
-        try {
-          clearDbErrorBanner();
-          const response = await fetch(`/api/search-employees?q=${encodeURIComponent(query)}`);
-          const data = await response.json();
-          if (data && data.error) {
-            showDbErrorBanner(data.error);
-            cfg.list.style.display = 'none';
-            return;
-          }
-
-          if (!Array.isArray(data) || data.length === 0) {
-            cfg.activeSuggestionIndex = -1;
-            cfg.list.innerHTML = '<div class="list-group-item text-muted">No results</div>';
-            cfg.list.style.display = 'block';
-            return;
-          }
-
-          cfg.list.innerHTML = data.map(emp => `
-            <a href="#" class="list-group-item list-group-item-action" data-id="${emp.id}" data-first="${emp.first_name}" data-last="${emp.last_name}" data-username="${emp.username}" data-job-title="${emp.job_title || ''}">
-              <strong>${emp.first_name} ${emp.last_name}</strong><br>
-              <small>${emp.job_title || 'No title'} • ${emp.username}</small>
-            </a>
-          `).join('');
-
-          cfg.activeSuggestionIndex = -1;
-
-          cfg.list.querySelectorAll('a').forEach(item => {
-            item.addEventListener('click', (clickEvent) => {
-              clickEvent.preventDefault();
-              pickEmployeeSuggestion(item);
-            });
-          });
-
-          cfg.list.style.display = 'block';
-        } catch (error) {
-          showDbErrorBanner(error);
-        }
-      }, 250);
-    });
-
-    input.addEventListener('blur', () => {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg) return;
-      cfg.activeSuggestionIndex = -1;
-      setTimeout(() => { cfg.list.style.display = 'none'; }, 200);
-    });
-
-    input.addEventListener('keydown', (event) => {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg) return;
-
-      if (event.key === 'ArrowDown') {
-        if (cfg.list.style.display === 'none') return;
-        const items = cfg.list.querySelectorAll('a[data-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        const next = cfg.activeSuggestionIndex < 0
-          ? 0
-          : Math.min(cfg.activeSuggestionIndex + 1, items.length - 1);
-        setActiveSuggestion(next);
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        if (cfg.list.style.display === 'none') return;
-        const items = cfg.list.querySelectorAll('a[data-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        if (cfg.activeSuggestionIndex <= 0) {
-          setActiveSuggestion(-1);
-          const len = String(input.value || '').length;
-          if (typeof input.setSelectionRange === 'function') {
-            input.setSelectionRange(len, len);
-          }
-          return;
-        }
-        setActiveSuggestion(cfg.activeSuggestionIndex - 1);
-        return;
-      }
-
-      if (event.key === 'Enter') {
-        if (cfg.list.style.display === 'none') return;
-        const items = cfg.list.querySelectorAll('a[data-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        const index = cfg.activeSuggestionIndex >= 0 ? cfg.activeSuggestionIndex : 0;
-        pickEmployeeSuggestion(items[index]);
-        return;
-      }
-
-      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
-        return;
-      }
-      if (!String(input.value || '').trim()) {
-        return;
-      }
-      if (!cfg || cfg.list.style.display === 'none') {
-        return;
-      }
-      const items = cfg.list.querySelectorAll('a[data-id]');
-      if (!items.length) {
-        return;
-      }
-
-      event.preventDefault();
-      const index = cfg.activeSuggestionIndex >= 0 ? cfg.activeSuggestionIndex : 0;
-      pickEmployeeSuggestion(items[index]);
     });
   }
 
@@ -1026,6 +914,42 @@
     const input = document.getElementById(inputId);
     const list = document.getElementById(listId);
     if (!input || !list) return;
+
+    const host = input.closest('.input-group') || input.parentElement;
+    if (host) {
+      if (!host.contains(list)) {
+        host.appendChild(list);
+      }
+      try {
+        if (window.getComputedStyle(host).position === 'static') {
+          host.style.position = 'relative';
+        }
+      } catch (_) {}
+      list.style.position = 'absolute';
+      list.style.left = '0';
+      list.style.right = '0';
+      list.style.top = 'calc(100% + 0.35rem)';
+      list.style.zIndex = '45';
+      list.style.marginTop = '0';
+    }
+
+    const host = input.closest('.input-group') || input.parentElement;
+    if (host) {
+      if (!host.contains(list)) {
+        host.appendChild(list);
+      }
+      try {
+        if (window.getComputedStyle(host).position === 'static') {
+          host.style.position = 'relative';
+        }
+      } catch (_) {}
+      list.style.position = 'absolute';
+      list.style.left = '0';
+      list.style.right = '0';
+      list.style.top = 'calc(100% + 0.35rem)';
+      list.style.zIndex = '45';
+      list.style.marginTop = '0';
+    }
 
     input.setAttribute('autocomplete', 'off');
     input.setAttribute('autocapitalize', 'off');
@@ -1273,7 +1197,10 @@
         <div class="mb-3">
           <label for="person-search" class="form-label">Find Employee(s)</label>
           <div id="person-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
-          <input type="text" class="form-control" id="person-search" placeholder="Search by ID, name, or username...">
+          <div class="input-group">
+            <input type="text" class="form-control" id="person-search" placeholder="Type name or username...">
+            <button type="button" class="btn btn-outline-secondary" id="person-search-advanced-btn">Advanced Search</button>
+          </div>
           <div id="person-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="mb-3">
@@ -1382,7 +1309,10 @@
       <div class="mb-3">
         <label for="manual-person-search" class="form-label">Add Individual(s)</label>
         <div id="manual-person-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
-        <input type="text" class="form-control" id="manual-person-search" placeholder="Search by ID, name, or username...">
+        <div class="input-group">
+          <input type="text" class="form-control" id="manual-person-search" placeholder="Type name or username...">
+          <button type="button" class="btn btn-outline-secondary" id="manual-person-search-advanced-btn">Advanced Search</button>
+        </div>
         <div id="manual-person-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
       </div>
     `;
@@ -1796,6 +1726,7 @@
     const btnTestModal = document.getElementById('btn-test-query-modal');
     const btnExplain = document.getElementById('btn-explain-query');
     const btnAccept = document.getElementById('btn-accept-sql');
+    const btnCreateGroup = document.getElementById('btn-create-group');
     const wholeCount = document.getElementById('whole-query-count');
 
     resetTestResult();
@@ -1808,6 +1739,7 @@
       if (btnTestModal) btnTestModal.style.display = 'none';
       if (btnExplain) btnExplain.style.display = 'none';
       btnAccept.style.display = 'none';
+      if (btnCreateGroup) btnCreateGroup.style.display = 'none';
       return;
     }
 
@@ -1826,6 +1758,7 @@
         if (btnTestModal) btnTestModal.style.display = 'none';
         if (btnExplain) btnExplain.style.display = 'none';
         btnAccept.style.display = 'none';
+        if (btnCreateGroup) btnCreateGroup.style.display = 'none';
         return;
       }
 
@@ -1835,6 +1768,7 @@
       if (btnTestModal) btnTestModal.style.display = 'block';
       if (btnExplain) btnExplain.style.display = 'block';
       btnAccept.style.display = 'inline-block';
+      if (btnCreateGroup) btnCreateGroup.style.display = 'inline-block';
     } catch (error) {
       showDbErrorBanner(error);
       preview.value = `Error generating SQL: ${error}`;
@@ -1842,6 +1776,7 @@
       if (btnTestModal) btnTestModal.style.display = 'none';
       if (btnExplain) btnExplain.style.display = 'none';
       btnAccept.style.display = 'none';
+      if (btnCreateGroup) btnCreateGroup.style.display = 'none';
     }
   }
 
@@ -2014,6 +1949,16 @@
   });
 
   document.getElementById('btn-accept-sql').addEventListener('click', () => {
+    if (isAdhocMode) {
+      if (!currentSQL) return;
+      const downloadInput = document.getElementById('adhoc-query-download-sql');
+      const downloadForm = document.getElementById('adhoc-query-download-form');
+      if (!downloadInput || !downloadForm) return;
+      downloadInput.value = currentSQL;
+      showBuilderLoading('Generating CSV', 'Preparing your ad hoc report...', 'Your browser download will begin shortly');
+      downloadForm.submit();
+      return;
+    }
     allowExit = true;
     markSaved();
     sessionStorage.setItem('accepted_query_builder_params', JSON.stringify(builderPayload()));
@@ -2026,24 +1971,44 @@
     }
   });
 
-  document.getElementById('btn-edit-sql').addEventListener('click', () => {
-    allowExit = true;
-    if (currentSQL) {
-      sessionStorage.setItem('accepted_query_sql', currentSQL);
-    }
-    const returnTo = sessionStorage.getItem('return_to');
-    if (returnTo) {
-      sessionStorage.removeItem('return_to');
-      window.location.href = returnTo;
-    } else {
+  const btnEditSql = document.getElementById('btn-edit-sql');
+  if (btnEditSql) {
+    btnEditSql.addEventListener('click', () => {
+      allowExit = true;
+      if (currentSQL) {
+        sessionStorage.setItem('accepted_query_sql', currentSQL);
+      }
+      const returnTo = sessionStorage.getItem('return_to');
+      if (returnTo) {
+        sessionStorage.removeItem('return_to');
+        window.location.href = returnTo;
+      } else {
+        window.location.href = '/group/new';
+      }
+    });
+  }
+
+  const btnCreateGroup = document.getElementById('btn-create-group');
+  if (btnCreateGroup) {
+    btnCreateGroup.addEventListener('click', () => {
+      if (!currentSQL) return;
+      allowExit = true;
+      markSaved();
+      sessionStorage.setItem('query_builder_initial_params', JSON.stringify(builderPayload()));
+      sessionStorage.setItem('accepted_query_builder_params', JSON.stringify(builderPayload()));
+      showBuilderLoading('Opening Group Creation', 'Carrying this query into a new group...', 'You can finish group details on the next page');
       window.location.href = '/group/new';
-    }
-  });
+    });
+  }
 
   document.getElementById('btn-cancel').addEventListener('click', () => {
     if (confirmLeaveIfDirty()) {
       allowExit = true;
-      window.history.back();
+      if (cancelUrl) {
+        window.location.href = cancelUrl;
+      } else {
+        window.history.back();
+      }
     }
   });
 
@@ -2407,38 +2372,13 @@
     close.addEventListener('click', closeAll);
     cancel.addEventListener('click', closeAll);
 
-    search.setAttribute('autocomplete', 'off');
-    search.setAttribute('autocapitalize', 'off');
-    search.setAttribute('autocorrect', 'off');
-    search.setAttribute('spellcheck', 'false');
-    search.setAttribute('data-lpignore', 'true');
-    search.setAttribute('data-1p-ignore', 'true');
-
-    let timer = null;
-    let activeIndex = -1;
-    let currentRows = [];
-
-    function setActiveSuggestion(index) {
-      activeIndex = index;
-      const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-      items.forEach((item, idx) => {
-        item.classList.toggle('active', idx === index);
-      });
-      if (index >= 0 && items[index]) {
-        try { items[index].scrollIntoView({ block: 'nearest' }); } catch (_) {}
-      }
-    }
-
-    function pickRoleSeedRow(index) {
-      const person = currentRows[index];
+    function pickRoleSeedRow(person) {
       if (!person) return;
       const exists = roleSeedPeople.some((existing) => String(existing.id) === String(person.id));
       if (exists) return;
       roleSeedPeople.push(person);
       search.value = '';
       suggestions.style.display = 'none';
-      activeIndex = -1;
-      currentRows = [];
       renderRoleSeedPeople();
       renderRoleSeedMatrix();
       refreshRoleSeedCounts();
@@ -2446,118 +2386,17 @@
       search.focus();
     }
 
-    search.addEventListener('input', (event) => {
-      const query = (event.target.value || '').trim();
-      clearTimeout(timer);
-      if (query.length < 2) {
-        activeIndex = -1;
-        currentRows = [];
-        suggestions.style.display = 'none';
-        return;
-      }
-
-      timer = setTimeout(async () => {
-        try {
-          clearDbErrorBanner();
-          const response = await fetch(`/api/search-employees?q=${encodeURIComponent(query)}`);
-          const data = await response.json();
-          if (data && data.error) {
-            showDbErrorBanner(data.error);
-            suggestions.style.display = 'none';
-            return;
-          }
-
-          const rows = Array.isArray(data) ? data : [];
-          currentRows = rows;
-          activeIndex = -1;
-          if (rows.length === 0) {
-            suggestions.innerHTML = '<div class="list-group-item text-muted">No results</div>';
-            suggestions.style.display = 'block';
-            return;
-          }
-
-          suggestions.innerHTML = rows.map((emp) => `
-            <a href="#" class="list-group-item list-group-item-action" data-role-seed-id="${escapeHtml(emp.id)}" data-index="${rows.indexOf(emp)}">
-              <strong>${escapeHtml((`${emp.first_name || ''} ${emp.last_name || ''}`).trim())}</strong><br>
-              <small>${escapeHtml(emp.job_title || 'No title')} • ${escapeHtml(emp.username || '')}</small>
-            </a>
-          `).join('');
-
-          suggestions.querySelectorAll('a[data-role-seed-id]').forEach((item, idx) => {
-            item.addEventListener('click', (clickEvent) => {
-              clickEvent.preventDefault();
-              pickRoleSeedRow(idx);
-            });
-          });
-
-          suggestions.style.display = 'block';
-        } catch (error) {
-          showDbErrorBanner(error);
-        }
-      }, 200);
-    });
-
-    search.addEventListener('blur', () => {
-      setTimeout(() => { suggestions.style.display = 'none'; }, 200);
-    });
-
-    search.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowDown') {
-        if (suggestions.style.display === 'none') return;
-        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        const next = activeIndex < 0 ? 0 : Math.min(activeIndex + 1, items.length - 1);
-        setActiveSuggestion(next);
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        if (suggestions.style.display === 'none') return;
-        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        if (activeIndex <= 0) {
-          setActiveSuggestion(-1);
-          const len = String(search.value || '').length;
-          if (typeof search.setSelectionRange === 'function') {
-            search.setSelectionRange(len, len);
-          }
-          return;
-        }
-        setActiveSuggestion(activeIndex - 1);
-        return;
-      }
-
-      if (event.key === 'Enter') {
-        if (suggestions.style.display === 'none') return;
-        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        const index = activeIndex >= 0 ? activeIndex : 0;
-        pickRoleSeedRow(index);
-        return;
-      }
-
-      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
-        return;
-      }
-      if (!String(search.value || '').trim()) {
-        return;
-      }
-      if (suggestions.style.display === 'none') {
-        return;
-      }
-      const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-      if (!items.length) {
-        return;
-      }
-
-      event.preventDefault();
-      const index = activeIndex >= 0 ? activeIndex : 0;
-      pickRoleSeedRow(index);
-      search.focus();
-    });
+    if (window.EmployeeSearch && typeof window.EmployeeSearch.bindTypeahead === 'function') {
+      window.EmployeeSearch.bindTypeahead({
+        inputId: 'role-seed-person-search',
+        listId: 'role-seed-person-suggestions',
+        advancedButtonId: 'role-seed-advanced-search',
+        advancedTitle: 'Advanced Person Search for Role Seeding',
+        onPick: (person) => {
+          pickRoleSeedRow(person);
+        },
+      });
+    }
 
     apply.addEventListener('click', async () => {
       const block = roleBlockById(roleSeedBlockId);
@@ -2616,6 +2455,9 @@
 
   document.querySelectorAll('a[href]').forEach((link) => {
     link.addEventListener('click', (event) => {
+      if (isAdhocMode) {
+        return;
+      }
       if (!confirmLeaveIfDirty()) {
         event.preventDefault();
       }
@@ -2623,6 +2465,9 @@
   });
 
   window.addEventListener('beforeunload', (event) => {
+    if (isAdhocMode) {
+      return;
+    }
     if (!hasUnsavedChanges || allowExit) {
       return;
     }

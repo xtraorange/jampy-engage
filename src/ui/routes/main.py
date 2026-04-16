@@ -9,11 +9,20 @@ import time
 import uuid
 
 from ...services.config_service import ConfigService
+from ...services.adhoc_service import (
+    build_csv_buffer,
+    build_custom_employee_sql,
+    label_for_column,
+    load_employee_mv_columns,
+    objectid_rows_from_query_rows,
+    people_csv_buffer,
+)
 from ...services.employee_lookup_service import EmployeeLookupService, EXPORTABLE_FIELDS
 from ...services.group_service import GroupService
 from ...services.report_service import ReportService
 from ...services.stats_service import StatsService
 from ...generate_reports import discover_groups
+from ...db import DatabaseExecutor
 
 def init_main_routes(app, base_path: str):
     """Initialize main routes with dependencies."""
@@ -153,6 +162,44 @@ def init_main_routes(app, base_path: str):
             return "Fuzzy Manual Match" if is_manual_selection else "Fuzzy Auto Match"
         return "Manual Match" if is_manual_selection else "Matched"
 
+    def _parse_json_list(raw_value):
+        if not raw_value:
+            return []
+        try:
+            data = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return []
+        return data if isinstance(data, list) else []
+
+    @main_bp.route("/adhoc")
+    def adhoc_index():
+        """Landing page for ad hoc workflows."""
+        return render_template("adhoc.html")
+
+    @main_bp.route("/adhoc/people", methods=["GET"])
+    def adhoc_people():
+        """Find employees, build a working list, and export details."""
+        return render_template(
+            "adhoc_people.html",
+            exportable_fields=EXPORTABLE_FIELDS,
+        )
+
+    @main_bp.route("/adhoc/people/download", methods=["POST"])
+    def adhoc_people_download():
+        """Export the selected ad hoc people list to CSV."""
+        selected_people = _parse_json_list(request.form.get("selected_people_json", ""))
+        if not selected_people:
+            return redirect(url_for("main.adhoc_people"))
+
+        buffer = people_csv_buffer(selected_people)
+        return send_file(
+            buffer,
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name="adhoc_people.csv",
+        )
+
+    @main_bp.route("/adhoc/match", methods=["GET", "POST"])
     @main_bp.route("/adhoc-match", methods=["GET", "POST"])
     def adhoc_match():
         """Upload a CSV of names, review matches, and export enriched data."""
@@ -166,6 +213,7 @@ def init_main_routes(app, base_path: str):
                     "adhoc_match.html",
                     error="Choose a CSV file to upload.",
                     exportable_fields=EXPORTABLE_FIELDS,
+                    adhoc_mode=True,
                     search_mode=search_mode,
                 )
 
@@ -179,6 +227,7 @@ def init_main_routes(app, base_path: str):
                     "adhoc_match.html",
                     error=f"Unable to read CSV: {exc}",
                     exportable_fields=EXPORTABLE_FIELDS,
+                    adhoc_mode=True,
                     search_mode=search_mode,
                     lookup_stats=None,
                 )
@@ -265,6 +314,7 @@ def init_main_routes(app, base_path: str):
                     exportable_fields=EXPORTABLE_FIELDS,
                     headers=[],
                     match_results=[],
+                    adhoc_mode=True,
                     search_mode=search_mode,
                     lookup_stats=None,
                 )
@@ -302,6 +352,7 @@ def init_main_routes(app, base_path: str):
                 headers=headers,
                 match_results=results,
                 exportable_fields=EXPORTABLE_FIELDS,
+                adhoc_mode=True,
                 updating=app.config.get("updating"),
                 update_error=app.config.get("update_error"),
                 search_mode=search_mode,
@@ -314,11 +365,13 @@ def init_main_routes(app, base_path: str):
             exportable_fields=EXPORTABLE_FIELDS,
             headers=[],
             match_results=[],
+            adhoc_mode=True,
             search_mode="exact_then_fuzzy",
             lookup_stats=None,
             state_token="",
         )
 
+    @main_bp.route("/adhoc/match/download", methods=["POST"])
     @main_bp.route("/adhoc-match/download", methods=["POST"])
     def adhoc_match_download():
         """Export reviewed ad hoc match results as CSV."""
@@ -398,6 +451,64 @@ def init_main_routes(app, base_path: str):
         buffer = io.BytesIO(output.getvalue().encode("utf-8-sig"))
         buffer.seek(0)
         return send_file(buffer, mimetype="text/csv", as_attachment=True, download_name="adhoc_name_matches.csv")
+
+    @main_bp.route("/adhoc/query-builder/download", methods=["POST"])
+    def adhoc_query_builder_download():
+        """Export query-builder results directly to an ObjectId CSV without saving a group."""
+        sql = (request.form.get("sql") or "").strip()
+        if not sql:
+            return redirect(url_for("updates.adhoc_query_builder"))
+
+        cfg = config_service.load_general_config()
+        executor = DatabaseExecutor(cfg.get("oracle_tns"))
+        try:
+            rows = executor.run_query(sql)
+        finally:
+            executor.close()
+
+        buffer = build_csv_buffer(["ObjectId"], objectid_rows_from_query_rows(rows))
+        return send_file(
+            buffer,
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name="adhoc_query_builder_report.csv",
+        )
+
+    @main_bp.route("/adhoc/custom-report", methods=["GET"])
+    def adhoc_custom_report():
+        """Build a custom employee report by choosing columns and filters."""
+        return render_template("adhoc_custom_report.html")
+
+    @main_bp.route("/adhoc/custom-report/download", methods=["POST"])
+    def adhoc_custom_report_download():
+        """Run a custom employee query and export the results to CSV."""
+        cfg = config_service.load_general_config()
+        selected_columns = _parse_json_list(request.form.get("selected_columns_json", ""))
+        filters = _parse_json_list(request.form.get("filters_json", ""))
+        allowed_columns = load_employee_mv_columns(cfg.get("oracle_tns"))
+
+        try:
+            sql = build_custom_employee_sql(selected_columns, filters, allowed_columns)
+        except ValueError:
+            return redirect(url_for("main.adhoc_custom_report"))
+
+        executor = DatabaseExecutor(cfg.get("oracle_tns"))
+        try:
+            rows = executor.run_query(sql)
+        finally:
+            executor.close()
+
+        normalized_columns = [column for column in selected_columns if column in allowed_columns]
+        csv_rows = []
+        for row in rows:
+            csv_rows.append([row.get(column, "") if isinstance(row, dict) else "" for column in normalized_columns])
+        buffer = build_csv_buffer([label_for_column(column) for column in normalized_columns], csv_rows)
+        return send_file(
+            buffer,
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name="adhoc_custom_report.csv",
+        )
 
     @main_bp.route("/")
     def index():

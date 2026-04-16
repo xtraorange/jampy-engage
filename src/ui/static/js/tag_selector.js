@@ -46,6 +46,31 @@
       activeSuggestionIndex: -1,
     };
 
+    function anchorFloatingSuggestions() {
+      if (suggestions.dataset.floatingAnchored === '1') {
+        return;
+      }
+      var host = input.closest('.input-group') || input.parentElement;
+      if (!host) {
+        return;
+      }
+      if (!host.contains(suggestions)) {
+        host.appendChild(suggestions);
+      }
+      try {
+        if (window.getComputedStyle(host).position === 'static') {
+          host.style.position = 'relative';
+        }
+      } catch (_) {}
+      suggestions.style.position = 'absolute';
+      suggestions.style.left = '0';
+      suggestions.style.right = '0';
+      suggestions.style.top = 'calc(100% + 0.35rem)';
+      suggestions.style.zIndex = '45';
+      suggestions.style.marginTop = '0';
+      suggestions.dataset.floatingAnchored = '1';
+    }
+
     function getSuggestionItems() {
       return suggestions.querySelectorAll('a[data-tag]');
     }
@@ -116,6 +141,7 @@
     }
 
     function renderSuggestions(query) {
+      anchorFloatingSuggestions();
       var normalized = String(query || '').trim().toLowerCase();
       var showAllOnEmpty = options.showAllOnEmpty !== false;
 

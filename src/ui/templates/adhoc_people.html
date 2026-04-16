@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Ad Hoc People Finder{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <div class="text-muted small mb-1"><a href="{{ url_for('main.adhoc_index') }}">Ad Hoc</a> / People Finder</div>
+    <h1 class="mb-1">Ad Hoc People Finder</h1>
+    <small class="text-muted">Search for people, add selected results to a working list, and export their details.</small>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/employee_search.js') }}"></script>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <h5 class="mb-0">Find People</h5>
+        <small class="text-muted">Start typing to search by name/username, or use Advanced Search for any attribute.</small>
+      </div>
+      <div class="card-body">
+        <div class="input-group mb-2">
+          <input type="text" class="form-control" id="adhoc-people-search" placeholder="Type name or username..." minlength="2">
+          <button type="button" class="btn btn-outline-secondary" id="adhoc-people-advanced-btn">Advanced Search</button>
+        </div>
+        <div class="text-muted small mb-2">Pick a result to add it to Selected People.</div>
+        <div id="adhoc-people-suggestions" class="list-group typeahead-list" style="display:none; max-height: 280px; overflow-y: auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="mb-0">Selected People</h5>
+          <small class="text-muted">People you add stay in this list while you continue searching.</small>
+        </div>
+        <form id="adhoc-people-download-form" method="post" action="{{ url_for('main.adhoc_people_download') }}">
+          <input type="hidden" name="selected_people_json" id="selected_people_json">
+          <button type="submit" id="adhoc-people-download-btn" class="btn btn-primary btn-sm" disabled>Download CSV</button>
+        </form>
+      </div>
+      <div class="card-body">
+        <div id="adhoc-people-selected-empty" class="text-muted">No people added yet.</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle" id="adhoc-people-selected-table" style="display:none;">
+            <thead>
+              <tr>
+                <th>Employee ID</th>
+                <th>Name</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Job Title</th>
+                <th>Department</th>
+                <th>Location</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="adhoc-people-selected-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const selectedPeople = [];
+
+  function personKey(person) {
+    return window.EmployeeSearch.key(person);
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function syncSelectedPeople() {
+    document.getElementById('selected_people_json').value = JSON.stringify(selectedPeople);
+    const hasPeople = selectedPeople.length > 0;
+    document.getElementById('adhoc-people-download-btn').disabled = !hasPeople;
+    document.getElementById('adhoc-people-selected-empty').style.display = hasPeople ? 'none' : '';
+    document.getElementById('adhoc-people-selected-table').style.display = hasPeople ? '' : 'none';
+
+    const tbody = document.getElementById('adhoc-people-selected-body');
+    if (!hasPeople) {
+      tbody.innerHTML = '';
+      return;
+    }
+
+    tbody.innerHTML = selectedPeople.map((person, index) => `
+      <tr>
+        <td class="font-monospace">${escapeHtml(person.id || '')}</td>
+        <td>${escapeHtml([person.first_name, person.last_name].filter(Boolean).join(' '))}</td>
+        <td class="font-monospace">${escapeHtml(person.username || '')}</td>
+        <td class="font-monospace">${escapeHtml(person.email || '')}</td>
+        <td>${escapeHtml(person.job_title || '')}</td>
+        <td>${escapeHtml(person.department_id || '')}</td>
+        <td>${escapeHtml(person.location || '')}</td>
+        <td><button type="button" class="btn btn-outline-danger btn-sm" data-remove-index="${index}">Remove</button></td>
+      </tr>
+    `).join('');
+  }
+
+  function addPerson(person) {
+    if (!person) return;
+    const key = personKey(person);
+    if (!key || selectedPeople.some((item) => personKey(item) === key)) {
+      return;
+    }
+    selectedPeople.push(person);
+    syncSelectedPeople();
+  }
+
+  window.EmployeeSearch.bindTypeahead({
+    inputId: 'adhoc-people-search',
+    listId: 'adhoc-people-suggestions',
+    advancedButtonId: 'adhoc-people-advanced-btn',
+    advancedTitle: 'Advanced Search: Ad Hoc People Finder',
+    onPick: addPerson,
+  });
+
+  document.getElementById('adhoc-people-selected-body').addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-remove-index]');
+    if (!button) return;
+    selectedPeople.splice(Number(button.getAttribute('data-remove-index')), 1);
+    syncSelectedPeople();
+  });
+
+  document.getElementById('adhoc-people-download-form').addEventListener('submit', (event) => {
+    if (!selectedPeople.length) {
+      event.preventDefault();
+    }
+  });
+
+  syncSelectedPeople();
+</script>
+{% endblock %}

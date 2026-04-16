@@ -5,6 +5,11 @@ import sys
 from datetime import datetime
 
 from ...services.config_service import ConfigService
+from ...services.adhoc_service import (
+    build_custom_employee_sql,
+    label_for_column,
+    load_employee_mv_columns,
+)
 from ...services.employee_lookup_service import EmployeeLookupService
 from ...sql_builder import generate_safe_hierarchy_sql
 from ...query_explainer import explain_builder_query
@@ -64,16 +69,17 @@ def init_api_routes(app, base_path: str):
         """Typeahead search for employees."""
         cfg = config_service.load_general_config()
         query = request.args.get("q", "").strip()
+        scope = request.args.get("scope", "basic").strip().lower()
 
         if not query or len(query) < 2:
             return jsonify([])
 
         try:
             lookup_service = EmployeeLookupService(cfg.get("oracle_tns"))
-            parts = query.split()
-            first_name = parts[0] if len(parts) >= 2 else None
-            last_name = parts[-1] if len(parts) >= 2 else None
-            items = lookup_service.search_candidates(query=query, first_name=first_name, last_name=last_name, limit=20)
+            if scope == "advanced":
+                items = lookup_service.search_candidates(query=query, limit=20)
+            else:
+                items = lookup_service.search_candidates_basic(query=query, limit=20)
             return jsonify(items)
         except Exception as e:
             import traceback, logging, os
@@ -88,6 +94,72 @@ def init_api_routes(app, base_path: str):
             # return full message if short number or generic
             return jsonify({"error": err_msg}), 500
 
+    @api_bp.route("/api/search-employees-advanced", methods=["POST"])
+    def search_employees_advanced():
+        """Advanced employee search by supported attributes."""
+        cfg = config_service.load_general_config()
+        payload = request.get_json(silent=True) or {}
+        filters = payload.get("filters") if isinstance(payload.get("filters"), dict) else payload
+        if not isinstance(filters, dict):
+            filters = {}
+
+        if not any(str(value or "").strip() for value in filters.values()):
+            return jsonify([])
+
+        try:
+            lookup_service = EmployeeLookupService(cfg.get("oracle_tns"))
+            items = lookup_service.search_candidates_advanced(filters=filters, limit=100)
+            return jsonify(items)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @api_bp.route("/api/adhoc-report-columns", methods=["GET"])
+    def adhoc_report_columns():
+        """Return the available employee_mv columns for ad hoc custom reporting."""
+        cfg = config_service.load_general_config()
+        columns = load_employee_mv_columns(cfg.get("oracle_tns"))
+        return jsonify([
+            {
+                "column": column,
+                "label": label_for_column(column),
+            }
+            for column in columns
+        ])
+
+    @api_bp.route("/api/adhoc-custom-report-sql", methods=["POST"])
+    def adhoc_custom_report_sql():
+        """Build validated SQL for the ad hoc custom report workflow."""
+        cfg = config_service.load_general_config()
+        payload = request.get_json(silent=True) or {}
+        selected_columns = payload.get("selected_columns") or []
+        filters = payload.get("filters") or []
+        allowed_columns = load_employee_mv_columns(cfg.get("oracle_tns"))
+        try:
+            sql = build_custom_employee_sql(selected_columns, filters, allowed_columns)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"sql": sql})
+
+    @api_bp.route("/api/adhoc-custom-report-count", methods=["POST"])
+    def adhoc_custom_report_count():
+        """Count rows for the ad hoc custom report workflow."""
+        cfg = config_service.load_general_config()
+        payload = request.get_json(silent=True) or {}
+        selected_columns = payload.get("selected_columns") or []
+        filters = payload.get("filters") or []
+        allowed_columns = load_employee_mv_columns(cfg.get("oracle_tns"))
+        try:
+            sql = build_custom_employee_sql(selected_columns, filters, allowed_columns)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        executor = DatabaseExecutor(cfg.get("oracle_tns"))
+        try:
+            count = _extract_count_value(executor.run_query(f"SELECT COUNT(*) AS CNT FROM ({sql})"))
+        finally:
+            executor.close()
+        return jsonify({"count": count, "sql": sql})
+
 
     @api_bp.route("/api/get-all-values", methods=["GET"])
     def get_all_values():
@@ -98,11 +170,17 @@ def init_api_routes(app, base_path: str):
         # Map field names to column names
         field_map = {
             "job_title": "JOB_TITLE",
+            "employee_job_title": "JOB_TITLE",
             "location": "LOCATION",
             "bu_code": "BU_CODE", 
             "company": "COMPANY",
             "tree_branch": "TREE_BRANCH",
             "department_id": "DEPARTMENT_ID",
+            "first_name": "FIRST_NAME",
+            "last_name": "LAST_NAME",
+            "username": "USERNAME",
+            "employee_id": "EMPLOYEE_ID",
+            "job_code": "JOB_CODE",
         }
         
         if field not in field_map:
@@ -133,11 +211,17 @@ def init_api_routes(app, base_path: str):
         # Map field names to column names
         field_map = {
             "job_title": "JOB_TITLE",
+            "employee_job_title": "JOB_TITLE",
             "location": "LOCATION",
             "bu_code": "BU_CODE",
             "company": "COMPANY", 
             "tree_branch": "TREE_BRANCH",
             "department_id": "DEPARTMENT_ID",
+            "first_name": "FIRST_NAME",
+            "last_name": "LAST_NAME",
+            "username": "USERNAME",
+            "employee_id": "EMPLOYEE_ID",
+            "job_code": "JOB_CODE",
         }
         
         if field not in field_map:
@@ -148,6 +232,8 @@ def init_api_routes(app, base_path: str):
             if field == "job_title":
                 # Special case: search both JOB_CODE and JOB_TITLE
                 sql = f"SELECT DISTINCT JOB_CODE || ' - ' || JOB_TITLE as value FROM omsadm.employee_mv WHERE (UPPER(JOB_CODE) LIKE UPPER('%{query}%') OR UPPER(JOB_TITLE) LIKE UPPER('%{query}%')) AND status_code != 'T' ORDER BY value"
+            elif field == "employee_job_title":
+                sql = f"SELECT DISTINCT JOB_TITLE as value FROM omsadm.employee_mv WHERE UPPER(JOB_TITLE) LIKE UPPER('%{query}%') AND JOB_TITLE IS NOT NULL AND status_code != 'T' ORDER BY value"
             else:
                 column = field_map[field]
                 sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE UPPER({column}) LIKE UPPER('%{query}%') AND status_code != 'T' ORDER BY {column}"

@@ -492,6 +492,36 @@
       color: #fff;
     }
 
+    /* Compact floating typeahead style used across all search suggestion dropdowns. */
+    .typeahead-list {
+      border: 0;
+      border-radius: 8px;
+      padding: 4px;
+      background: #fff;
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+
+    .typeahead-list .list-group-item {
+      border: 0;
+      border-radius: 6px;
+      padding: 0.42rem 0.55rem;
+      margin: 0;
+      font-size: 0.86rem;
+      line-height: 1.25;
+      transition: background-color 0.12s ease;
+    }
+
+    .typeahead-list .list-group-item + .list-group-item {
+      margin-top: 2px;
+    }
+
+    .typeahead-list .list-group-item:hover,
+    .typeahead-list .list-group-item.active {
+      background-color: #e7f1ff;
+      border-color: transparent;
+      color: #0a58ca;
+    }
+
     .nav-tabs .nav-link {
       color: var(--md-primary-dark);
       border: 0;
@@ -649,6 +679,9 @@
           </li>
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'tags.tags' %}active{% endif %}" href="{{ url_for('tags.tags') }}">Tags</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if request.path.startswith('/adhoc') %}active{% endif %}" href="{{ url_for('main.adhoc_index') }}">Ad Hoc</a>
           </li>
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'main.settings' %}active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>

@@ -590,6 +590,247 @@ def test_adhoc_match_download_scope_needs_review_expands_candidates(client, app_
     assert rows[3] == ["3", "Cara", "No Match Selected", ""]
 
 
+def test_adhoc_workbench_page(client):
+    rv = client.get("/adhoc")
+    assert rv.status_code == 200
+    assert b"Ad Hoc Workbench" in rv.data
+    assert b"People Finder" in rv.data
+    assert b"Name Matcher" in rv.data
+    assert b"Query Builder" in rv.data
+    assert b"Custom Report Builder" in rv.data
+
+
+def test_adhoc_people_page(client):
+    rv = client.get("/adhoc/people")
+    assert rv.status_code == 200
+    assert b"Ad Hoc People Finder" in rv.data
+    assert b"selected_people_json" in rv.data
+    assert b"Download CSV" in rv.data
+
+
+def test_adhoc_people_download_exports_selected_people(client):
+    rv = client.post(
+        "/adhoc/people/download",
+        data={
+            "selected_people_json": json.dumps([
+                {
+                    "id": "1001",
+                    "username": "alice",
+                    "email": "alice@fastenal.com",
+                    "job_title": "Analyst",
+                    "department_id": "D01",
+                    "location": "Winona",
+                    "bu_code": "BU1",
+                    "company": "Fastenal",
+                    "tree_branch": "North",
+                    "full_part_time": "Full Time",
+                }
+            ])
+        },
+    )
+
+    assert rv.status_code == 200
+    csv_text = rv.data.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    assert rows[0] == [
+        "Employee ID",
+        "Username",
+        "Email",
+        "Job Title",
+        "Department ID",
+        "Location",
+        "Business Unit",
+        "Company",
+        "Tree Branch",
+        "Full/Part Time",
+    ]
+    assert rows[1] == [
+        "1001",
+        "alice",
+        "alice@fastenal.com",
+        "Analyst",
+        "D01",
+        "Winona",
+        "BU1",
+        "Fastenal",
+        "North",
+        "Full Time",
+    ]
+
+
+def test_adhoc_query_builder_route(client):
+    rv = client.get("/adhoc/query-builder")
+    assert rv.status_code == 200
+    assert b"Ad Hoc Query Builder" in rv.data
+    assert b"Download Query CSV" in rv.data
+    assert b"Create New Group from Query" in rv.data
+    assert b'id="btn-edit-sql"' not in rv.data
+
+
+def test_adhoc_custom_report_page_has_test_query_action(client):
+    rv = client.get("/adhoc/custom-report")
+    assert rv.status_code == 200
+    assert b"Ad Hoc Custom Report Builder" in rv.data
+    assert b"adhoc-custom-test-btn" in rv.data
+    assert b"adhoc-custom-test-modal" in rv.data
+
+
+def test_adhoc_query_builder_download_exports_objectid_csv(client, monkeypatch):
+    import src.ui.routes.main as main_routes
+
+    class DummyExec:
+        def __init__(self, tns):
+            pass
+
+        def run_query(self, sql):
+            return [
+                {"USERNAME": "alice"},
+                {"USERNAME": "bob@fastenal.com"},
+            ]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(main_routes, "DatabaseExecutor", DummyExec)
+
+    rv = client.post(
+        "/adhoc/query-builder/download",
+        data={"sql": "SELECT USERNAME FROM omsadm.employee_mv"},
+    )
+
+    assert rv.status_code == 200
+    csv_text = rv.data.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    assert rows == [["ObjectId"], ["alice@fastenal.com"], ["bob@fastenal.com"]]
+
+
+def test_adhoc_custom_report_endpoints(client, monkeypatch):
+    import src.ui.routes.api as api_routes
+    import src.services.adhoc_service as adhoc_service
+
+    calls = []
+
+    class DummyExec:
+        def __init__(self, tns):
+            pass
+
+        def run_query(self, sql):
+            calls.append(sql)
+            if "ALL_TAB_COLUMNS" in sql:
+                return [{"COLUMN_NAME": "USERNAME"}, {"COLUMN_NAME": "LOCATION"}, {"COLUMN_NAME": "EMAIL"}]
+            if "COUNT(*) AS CNT" in sql:
+                return [{"CNT": 7}]
+            return []
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(api_routes, "DatabaseExecutor", DummyExec)
+    monkeypatch.setattr(adhoc_service, "DatabaseExecutor", DummyExec)
+
+    rv = client.get("/api/adhoc-report-columns")
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data[0] == {"column": "USERNAME", "label": "Username"}
+
+    rv = client.post(
+        "/api/adhoc-custom-report-sql",
+        json={
+            "selected_columns": ["USERNAME", "EMAIL"],
+            "filters": [{"column": "LOCATION", "operator": "equals", "value": "MN"}],
+        },
+    )
+    assert rv.status_code == 200
+    assert "SELECT USERNAME, EMAIL FROM omsadm.employee_mv" in rv.get_json()["sql"]
+    assert "UPPER(LOCATION) = UPPER('MN')" in rv.get_json()["sql"]
+
+    rv = client.post(
+        "/api/adhoc-custom-report-count",
+        json={
+            "selected_columns": ["USERNAME"],
+            "filters": [{"column": "LOCATION", "operator": "equals", "value": "MN"}],
+        },
+    )
+    assert rv.status_code == 200
+    payload = rv.get_json()
+    assert payload["count"] == 7
+    assert any("COUNT(*) AS CNT" in sql for sql in calls)
+
+    rv = client.post(
+        "/api/adhoc-custom-report-sql",
+        json={
+            "selected_columns": ["USERNAME"],
+            "filters": [{"column": "LOCATION", "operator": "like", "value": "M%"}],
+        },
+    )
+    assert rv.status_code == 200
+    assert "UPPER(LOCATION) LIKE UPPER('M%')" in rv.get_json()["sql"]
+
+
+def test_employee_search_endpoints_basic_and_advanced(client, monkeypatch):
+    import src.ui.routes.api as api_routes
+
+    class DummyLookup:
+        def __init__(self, tns):
+            self.tns = tns
+
+        def search_candidates_basic(self, query=None, limit=20):
+            assert query == "ali"
+            return [{"id": "1001", "first_name": "Alice", "last_name": "Jones", "username": "ajones"}]
+
+        def search_candidates(self, query=None, limit=20):
+            return [{"id": "2002", "first_name": "Alex", "last_name": "Smith", "username": "asmith"}]
+
+        def search_candidates_advanced(self, filters=None, limit=100):
+            assert filters.get("department_id") == "D01"
+            return [{"id": "3003", "first_name": "Dana", "last_name": "Cole", "username": "dcole"}]
+
+    monkeypatch.setattr(api_routes, "EmployeeLookupService", DummyLookup)
+
+    rv = client.get("/api/search-employees?q=ali")
+    assert rv.status_code == 200
+    payload = rv.get_json()
+    assert payload[0]["username"] == "ajones"
+
+    rv = client.post("/api/search-employees-advanced", json={"filters": {"department_id": "D01"}})
+    assert rv.status_code == 200
+    payload = rv.get_json()
+    assert payload[0]["username"] == "dcole"
+
+
+def test_adhoc_custom_report_download(client, monkeypatch):
+    import src.ui.routes.main as main_routes
+    import src.services.adhoc_service as adhoc_service
+
+    class DummyExec:
+        def __init__(self, tns):
+            pass
+
+        def run_query(self, sql):
+            if "ALL_TAB_COLUMNS" in sql:
+                return [{"COLUMN_NAME": "USERNAME"}, {"COLUMN_NAME": "LOCATION"}]
+            return [{"USERNAME": "alice", "LOCATION": "MN"}]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(main_routes, "DatabaseExecutor", DummyExec)
+    monkeypatch.setattr(adhoc_service, "DatabaseExecutor", DummyExec)
+
+    rv = client.post(
+        "/adhoc/custom-report/download",
+        data={
+            "selected_columns_json": json.dumps(["USERNAME", "LOCATION"]),
+            "filters_json": json.dumps([{"column": "LOCATION", "operator": "equals", "value": "MN"}]),
+        },
+    )
+
+    assert rv.status_code == 200
+    csv_text = rv.data.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    assert rows == [["Username", "Location"], ["alice", "MN"]]
+
+
 def test_updates_page(client):
     rv = client.get("/updates")
     assert rv.status_code == 200
@@ -748,7 +989,7 @@ def test_query_builder_routes(client, monkeypatch):
     response = client.get("/api/search-employees?q=test")
     assert response.status_code in [200, 500]
 
-    for field in ["job_title", "location", "bu_code", "company", "tree_branch", "department_id"]:
+    for field in ["job_title", "employee_job_title", "location", "bu_code", "company", "tree_branch", "department_id", "first_name", "last_name", "username", "employee_id", "job_code"]:
         response = client.get(f"/api/search-values?field={field}&q=test")
         assert response.status_code == 200
         assert any("UPPER" in sql for sql in called["sql"])
