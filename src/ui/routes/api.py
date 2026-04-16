@@ -69,16 +69,17 @@ def init_api_routes(app, base_path: str):
         """Typeahead search for employees."""
         cfg = config_service.load_general_config()
         query = request.args.get("q", "").strip()
+        scope = request.args.get("scope", "basic").strip().lower()
 
         if not query or len(query) < 2:
             return jsonify([])
 
         try:
             lookup_service = EmployeeLookupService(cfg.get("oracle_tns"))
-            parts = query.split()
-            first_name = parts[0] if len(parts) >= 2 else None
-            last_name = parts[-1] if len(parts) >= 2 else None
-            items = lookup_service.search_candidates(query=query, first_name=first_name, last_name=last_name, limit=20)
+            if scope == "advanced":
+                items = lookup_service.search_candidates(query=query, limit=20)
+            else:
+                items = lookup_service.search_candidates_basic(query=query, limit=20)
             return jsonify(items)
         except Exception as e:
             import traceback, logging, os
@@ -92,6 +93,25 @@ def init_api_routes(app, base_path: str):
             print(f"DEBUG: Search error logged to {log_path}")
             # return full message if short number or generic
             return jsonify({"error": err_msg}), 500
+
+    @api_bp.route("/api/search-employees-advanced", methods=["POST"])
+    def search_employees_advanced():
+        """Advanced employee search by supported attributes."""
+        cfg = config_service.load_general_config()
+        payload = request.get_json(silent=True) or {}
+        filters = payload.get("filters") if isinstance(payload.get("filters"), dict) else payload
+        if not isinstance(filters, dict):
+            filters = {}
+
+        if not any(str(value or "").strip() for value in filters.values()):
+            return jsonify([])
+
+        try:
+            lookup_service = EmployeeLookupService(cfg.get("oracle_tns"))
+            items = lookup_service.search_candidates_advanced(filters=filters, limit=100)
+            return jsonify(items)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
 
     @api_bp.route("/api/adhoc-report-columns", methods=["GET"])
     def adhoc_report_columns():
@@ -150,11 +170,17 @@ def init_api_routes(app, base_path: str):
         # Map field names to column names
         field_map = {
             "job_title": "JOB_TITLE",
+            "employee_job_title": "JOB_TITLE",
             "location": "LOCATION",
             "bu_code": "BU_CODE", 
             "company": "COMPANY",
             "tree_branch": "TREE_BRANCH",
             "department_id": "DEPARTMENT_ID",
+            "first_name": "FIRST_NAME",
+            "last_name": "LAST_NAME",
+            "username": "USERNAME",
+            "employee_id": "EMPLOYEE_ID",
+            "job_code": "JOB_CODE",
         }
         
         if field not in field_map:
@@ -185,11 +211,17 @@ def init_api_routes(app, base_path: str):
         # Map field names to column names
         field_map = {
             "job_title": "JOB_TITLE",
+            "employee_job_title": "JOB_TITLE",
             "location": "LOCATION",
             "bu_code": "BU_CODE",
             "company": "COMPANY", 
             "tree_branch": "TREE_BRANCH",
             "department_id": "DEPARTMENT_ID",
+            "first_name": "FIRST_NAME",
+            "last_name": "LAST_NAME",
+            "username": "USERNAME",
+            "employee_id": "EMPLOYEE_ID",
+            "job_code": "JOB_CODE",
         }
         
         if field not in field_map:
@@ -200,6 +232,8 @@ def init_api_routes(app, base_path: str):
             if field == "job_title":
                 # Special case: search both JOB_CODE and JOB_TITLE
                 sql = f"SELECT DISTINCT JOB_CODE || ' - ' || JOB_TITLE as value FROM omsadm.employee_mv WHERE (UPPER(JOB_CODE) LIKE UPPER('%{query}%') OR UPPER(JOB_TITLE) LIKE UPPER('%{query}%')) AND status_code != 'T' ORDER BY value"
+            elif field == "employee_job_title":
+                sql = f"SELECT DISTINCT JOB_TITLE as value FROM omsadm.employee_mv WHERE UPPER(JOB_TITLE) LIKE UPPER('%{query}%') AND JOB_TITLE IS NOT NULL AND status_code != 'T' ORDER BY value"
             else:
                 column = field_map[field]
                 sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE UPPER({column}) LIKE UPPER('%{query}%') AND status_code != 'T' ORDER BY {column}"

@@ -756,6 +756,47 @@ def test_adhoc_custom_report_endpoints(client, monkeypatch):
     assert payload["count"] == 7
     assert any("COUNT(*) AS CNT" in sql for sql in calls)
 
+    rv = client.post(
+        "/api/adhoc-custom-report-sql",
+        json={
+            "selected_columns": ["USERNAME"],
+            "filters": [{"column": "LOCATION", "operator": "like", "value": "M%"}],
+        },
+    )
+    assert rv.status_code == 200
+    assert "UPPER(LOCATION) LIKE UPPER('M%')" in rv.get_json()["sql"]
+
+
+def test_employee_search_endpoints_basic_and_advanced(client, monkeypatch):
+    import src.ui.routes.api as api_routes
+
+    class DummyLookup:
+        def __init__(self, tns):
+            self.tns = tns
+
+        def search_candidates_basic(self, query=None, limit=20):
+            assert query == "ali"
+            return [{"id": "1001", "first_name": "Alice", "last_name": "Jones", "username": "ajones"}]
+
+        def search_candidates(self, query=None, limit=20):
+            return [{"id": "2002", "first_name": "Alex", "last_name": "Smith", "username": "asmith"}]
+
+        def search_candidates_advanced(self, filters=None, limit=100):
+            assert filters.get("department_id") == "D01"
+            return [{"id": "3003", "first_name": "Dana", "last_name": "Cole", "username": "dcole"}]
+
+    monkeypatch.setattr(api_routes, "EmployeeLookupService", DummyLookup)
+
+    rv = client.get("/api/search-employees?q=ali")
+    assert rv.status_code == 200
+    payload = rv.get_json()
+    assert payload[0]["username"] == "ajones"
+
+    rv = client.post("/api/search-employees-advanced", json={"filters": {"department_id": "D01"}})
+    assert rv.status_code == 200
+    payload = rv.get_json()
+    assert payload[0]["username"] == "dcole"
+
 
 def test_adhoc_custom_report_download(client, monkeypatch):
     import src.ui.routes.main as main_routes
@@ -948,7 +989,7 @@ def test_query_builder_routes(client, monkeypatch):
     response = client.get("/api/search-employees?q=test")
     assert response.status_code in [200, 500]
 
-    for field in ["job_title", "location", "bu_code", "company", "tree_branch", "department_id"]:
+    for field in ["job_title", "employee_job_title", "location", "bu_code", "company", "tree_branch", "department_id", "first_name", "last_name", "username", "employee_id", "job_code"]:
         response = client.get(f"/api/search-values?field={field}&q=test")
         assert response.status_code == 200
         assert any("UPPER" in sql for sql in called["sql"])

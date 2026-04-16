@@ -3,6 +3,7 @@
 import csv
 import io
 import re
+from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Sequence
 
 from ..db import DatabaseExecutor
@@ -74,8 +75,9 @@ def parse_allowed_columns(columns: Iterable[Any]) -> List[str]:
     return normalized
 
 
-def load_employee_mv_columns(oracle_tns: str) -> List[str]:
-    """Load available omsadm.employee_mv columns, with a safe fallback."""
+@lru_cache(maxsize=16)
+def _load_employee_mv_columns_cached(oracle_tns: str) -> tuple[str, ...]:
+    """Load and cache available omsadm.employee_mv columns, with a safe fallback."""
     executor = DatabaseExecutor(oracle_tns)
     try:
         rows = executor.run_query(
@@ -93,11 +95,16 @@ def load_employee_mv_columns(oracle_tns: str) -> List[str]:
             column = normalize_column_name(value)
             if column and column not in columns:
                 columns.append(column)
-        return columns or list(DEFAULT_EMPLOYEE_COLUMNS)
+        return tuple(columns or list(DEFAULT_EMPLOYEE_COLUMNS))
     except Exception:
-        return list(DEFAULT_EMPLOYEE_COLUMNS)
+        return tuple(DEFAULT_EMPLOYEE_COLUMNS)
     finally:
         executor.close()
+
+
+def load_employee_mv_columns(oracle_tns: str) -> List[str]:
+    """Load available omsadm.employee_mv columns, with a safe fallback."""
+    return list(_load_employee_mv_columns_cached(oracle_tns))
 
 
 def _escape_sql_literal(value: Any) -> str:
@@ -120,6 +127,8 @@ def _build_filter_condition(column: str, operator: str, value: Any) -> str:
         return f"UPPER({column}) <> UPPER('{text_value}')"
     if op == "contains":
         return f"UPPER({column}) LIKE UPPER('%{text_value}%')"
+    if op == "like":
+        return f"UPPER({column}) LIKE UPPER('{text_value}')"
     if op == "starts_with":
         return f"UPPER({column}) LIKE UPPER('{text_value}%')"
     if op == "ends_with":

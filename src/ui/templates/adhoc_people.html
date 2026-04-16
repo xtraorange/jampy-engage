@@ -18,30 +18,15 @@
     <div class="card h-100">
       <div class="card-header">
         <h5 class="mb-0">Find People</h5>
-        <small class="text-muted">Search by employee ID, name, username, or email.</small>
+        <small class="text-muted">Start typing to search by name/username, or use Advanced Search for any attribute.</small>
       </div>
       <div class="card-body">
-        <form id="adhoc-people-search-form" class="d-flex gap-2 mb-3">
-          <input type="text" class="form-control" id="adhoc-people-search" placeholder="Search by ID, name, username, or email..." minlength="2">
-          <button type="submit" class="btn btn-primary">Search</button>
-        </form>
-        <div id="adhoc-people-search-error" class="alert alert-danger" style="display:none;"></div>
-        <div id="adhoc-people-search-status" class="text-muted small mb-2">Enter at least 2 characters to search.</div>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Username</th>
-                <th>Title</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="adhoc-people-search-results">
-              <tr><td colspan="4" class="text-muted">No search results yet.</td></tr>
-            </tbody>
-          </table>
+        <div class="input-group mb-2">
+          <input type="text" class="form-control" id="adhoc-people-search" placeholder="Type name or username..." minlength="2">
+          <button type="button" class="btn btn-outline-secondary" id="adhoc-people-advanced-btn">Advanced Search</button>
         </div>
+        <div class="text-muted small mb-2">Pick a result to add it to Selected People.</div>
+        <div id="adhoc-people-suggestions" class="list-group typeahead-list" style="display:none; max-height: 280px; overflow-y: auto;"></div>
       </div>
     </div>
   </div>
@@ -84,7 +69,6 @@
 
 <script>
   const selectedPeople = [];
-  let searchResults = [];
 
   function personKey(person) {
     return window.EmployeeSearch.key(person);
@@ -126,60 +110,7 @@
     `).join('');
   }
 
-  function renderSearchResults(items) {
-    const tbody = document.getElementById('adhoc-people-search-results');
-    if (!Array.isArray(items) || items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No matching people found.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = items.map((person, index) => `
-      <tr>
-        <td>
-          <div>${escapeHtml([person.first_name, person.last_name].filter(Boolean).join(' ')) || '<span class="text-muted">(Unknown)</span>'}</div>
-          <div class="small text-muted">${escapeHtml(person.id || '')} ${person.location ? `| ${escapeHtml(person.location)}` : ''}</div>
-        </td>
-        <td class="font-monospace">${escapeHtml(person.username || '')}</td>
-        <td>${escapeHtml(person.job_title || '')}</td>
-        <td><button type="button" class="btn btn-outline-primary btn-sm" data-add-index="${index}">Add</button></td>
-      </tr>
-    `).join('');
-  }
-
-  async function performSearch(query) {
-    const errorBox = document.getElementById('adhoc-people-search-error');
-    const status = document.getElementById('adhoc-people-search-status');
-    errorBox.style.display = 'none';
-    errorBox.textContent = '';
-
-    const normalized = window.EmployeeSearch.normalizeQuery(query);
-    if (!normalized || normalized.length < 2) {
-      status.textContent = 'Enter at least 2 characters to search.';
-      renderSearchResults([]);
-      return;
-    }
-
-    status.textContent = `Searching for "${normalized}"...`;
-    searchResults = await window.EmployeeSearch.search(normalized);
-    status.textContent = `${searchResults.length} result${searchResults.length === 1 ? '' : 's'} found.`;
-    renderSearchResults(searchResults);
-  }
-
-  document.getElementById('adhoc-people-search-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    try {
-      await performSearch(document.getElementById('adhoc-people-search').value);
-    } catch (error) {
-      const errorBox = document.getElementById('adhoc-people-search-error');
-      errorBox.textContent = String(error);
-      errorBox.style.display = '';
-    }
-  });
-
-  document.getElementById('adhoc-people-search-results').addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-add-index]');
-    if (!button) return;
-    const person = searchResults[Number(button.getAttribute('data-add-index'))];
+  function addPerson(person) {
     if (!person) return;
     const key = personKey(person);
     if (!key || selectedPeople.some((item) => personKey(item) === key)) {
@@ -187,6 +118,14 @@
     }
     selectedPeople.push(person);
     syncSelectedPeople();
+  }
+
+  window.EmployeeSearch.bindTypeahead({
+    inputId: 'adhoc-people-search',
+    listId: 'adhoc-people-suggestions',
+    advancedButtonId: 'adhoc-people-advanced-btn',
+    advancedTitle: 'Advanced Search: Ad Hoc People Finder',
+    onPick: addPerson,
   });
 
   document.getElementById('adhoc-people-selected-body').addEventListener('click', (event) => {

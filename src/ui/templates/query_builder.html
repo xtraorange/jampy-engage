@@ -4,6 +4,8 @@
 
 {% block content %}
 
+<script src="{{ url_for('static', filename='js/employee_search.js') }}"></script>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     {% if adhoc_mode %}
@@ -146,7 +148,10 @@
     <div class="card-body role-seed-scroll-body">
       <div class="mb-3">
         <label for="role-seed-person-search" class="form-label">Find Person(s)</label>
-        <input type="text" class="form-control" id="role-seed-person-search" placeholder="Search by ID, name, or username...">
+        <div class="input-group">
+          <input type="text" class="form-control" id="role-seed-person-search" placeholder="Type name or username...">
+          <button type="button" class="btn btn-outline-secondary" id="role-seed-advanced-search">Advanced Search</button>
+        </div>
         <div id="role-seed-person-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 220px; overflow-y: auto;"></div>
       </div>
       <div class="mb-3">
@@ -891,177 +896,17 @@
   }
 
   function wireEmployeeSearch(inputId, listId, onPick) {
-    const input = document.getElementById(inputId);
-    const list = document.getElementById(listId);
-    if (!input || !list) return;
+    if (!window.EmployeeSearch || typeof window.EmployeeSearch.bindTypeahead !== 'function') return;
+    const advancedButtonId = inputId === 'person-search'
+      ? 'person-search-advanced-btn'
+      : (inputId === 'manual-person-search' ? 'manual-person-search-advanced-btn' : null);
 
-    input.setAttribute('autocomplete', 'off');
-    input.setAttribute('autocapitalize', 'off');
-    input.setAttribute('autocorrect', 'off');
-    input.setAttribute('spellcheck', 'false');
-    input.setAttribute('data-lpignore', 'true');
-    input.setAttribute('data-1p-ignore', 'true');
-
-    input._employeeSearchConfig = {
-      list,
+    window.EmployeeSearch.bindTypeahead({
+      inputId,
+      listId,
+      advancedButtonId,
+      advancedTitle: 'Advanced Person Search',
       onPick,
-      timer: input._employeeSearchConfig ? input._employeeSearchConfig.timer : null,
-      activeSuggestionIndex: -1,
-    };
-
-    function setActiveSuggestion(index) {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg) return;
-      cfg.activeSuggestionIndex = index;
-      const items = cfg.list.querySelectorAll('a[data-id]');
-      items.forEach((item, idx) => {
-        item.classList.toggle('active', idx === index);
-      });
-      if (index >= 0 && items[index]) {
-        try { items[index].scrollIntoView({ block: 'nearest' }); } catch (_) {}
-      }
-    }
-
-    function pickEmployeeSuggestion(item) {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg || !item) return;
-      cfg.onPick({
-        id: item.dataset.id,
-        first_name: item.dataset.first,
-        last_name: item.dataset.last,
-        username: item.dataset.username,
-        job_title: item.dataset.jobTitle || '',
-      });
-      input.value = '';
-      cfg.list.style.display = 'none';
-      cfg.activeSuggestionIndex = -1;
-      input.focus();
-    }
-
-    if (input.dataset.employeeSearchBound === '1') {
-      return;
-    }
-    input.dataset.employeeSearchBound = '1';
-
-    input.addEventListener('input', (event) => {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg) return;
-      const query = event.target.value.trim();
-      clearTimeout(cfg.timer);
-      if (query.length < 2) {
-        cfg.activeSuggestionIndex = -1;
-        cfg.list.style.display = 'none';
-        return;
-      }
-
-      cfg.timer = setTimeout(async () => {
-        try {
-          clearDbErrorBanner();
-          const response = await fetch(`/api/search-employees?q=${encodeURIComponent(query)}`);
-          const data = await response.json();
-          if (data && data.error) {
-            showDbErrorBanner(data.error);
-            cfg.list.style.display = 'none';
-            return;
-          }
-
-          if (!Array.isArray(data) || data.length === 0) {
-            cfg.activeSuggestionIndex = -1;
-            cfg.list.innerHTML = '<div class="list-group-item text-muted">No results</div>';
-            cfg.list.style.display = 'block';
-            return;
-          }
-
-          cfg.list.innerHTML = data.map(emp => `
-            <a href="#" class="list-group-item list-group-item-action" data-id="${emp.id}" data-first="${emp.first_name}" data-last="${emp.last_name}" data-username="${emp.username}" data-job-title="${emp.job_title || ''}">
-              <strong>${emp.first_name} ${emp.last_name}</strong><br>
-              <small>${emp.job_title || 'No title'} • ${emp.username}</small>
-            </a>
-          `).join('');
-
-          cfg.activeSuggestionIndex = -1;
-
-          cfg.list.querySelectorAll('a').forEach(item => {
-            item.addEventListener('click', (clickEvent) => {
-              clickEvent.preventDefault();
-              pickEmployeeSuggestion(item);
-            });
-          });
-
-          cfg.list.style.display = 'block';
-        } catch (error) {
-          showDbErrorBanner(error);
-        }
-      }, 250);
-    });
-
-    input.addEventListener('blur', () => {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg) return;
-      cfg.activeSuggestionIndex = -1;
-      setTimeout(() => { cfg.list.style.display = 'none'; }, 200);
-    });
-
-    input.addEventListener('keydown', (event) => {
-      const cfg = input._employeeSearchConfig;
-      if (!cfg) return;
-
-      if (event.key === 'ArrowDown') {
-        if (cfg.list.style.display === 'none') return;
-        const items = cfg.list.querySelectorAll('a[data-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        const next = cfg.activeSuggestionIndex < 0
-          ? 0
-          : Math.min(cfg.activeSuggestionIndex + 1, items.length - 1);
-        setActiveSuggestion(next);
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        if (cfg.list.style.display === 'none') return;
-        const items = cfg.list.querySelectorAll('a[data-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        if (cfg.activeSuggestionIndex <= 0) {
-          setActiveSuggestion(-1);
-          const len = String(input.value || '').length;
-          if (typeof input.setSelectionRange === 'function') {
-            input.setSelectionRange(len, len);
-          }
-          return;
-        }
-        setActiveSuggestion(cfg.activeSuggestionIndex - 1);
-        return;
-      }
-
-      if (event.key === 'Enter') {
-        if (cfg.list.style.display === 'none') return;
-        const items = cfg.list.querySelectorAll('a[data-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        const index = cfg.activeSuggestionIndex >= 0 ? cfg.activeSuggestionIndex : 0;
-        pickEmployeeSuggestion(items[index]);
-        return;
-      }
-
-      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
-        return;
-      }
-      if (!String(input.value || '').trim()) {
-        return;
-      }
-      if (!cfg || cfg.list.style.display === 'none') {
-        return;
-      }
-      const items = cfg.list.querySelectorAll('a[data-id]');
-      if (!items.length) {
-        return;
-      }
-
-      event.preventDefault();
-      const index = cfg.activeSuggestionIndex >= 0 ? cfg.activeSuggestionIndex : 0;
-      pickEmployeeSuggestion(items[index]);
     });
   }
 
@@ -1069,6 +914,42 @@
     const input = document.getElementById(inputId);
     const list = document.getElementById(listId);
     if (!input || !list) return;
+
+    const host = input.closest('.input-group') || input.parentElement;
+    if (host) {
+      if (!host.contains(list)) {
+        host.appendChild(list);
+      }
+      try {
+        if (window.getComputedStyle(host).position === 'static') {
+          host.style.position = 'relative';
+        }
+      } catch (_) {}
+      list.style.position = 'absolute';
+      list.style.left = '0';
+      list.style.right = '0';
+      list.style.top = 'calc(100% + 0.35rem)';
+      list.style.zIndex = '45';
+      list.style.marginTop = '0';
+    }
+
+    const host = input.closest('.input-group') || input.parentElement;
+    if (host) {
+      if (!host.contains(list)) {
+        host.appendChild(list);
+      }
+      try {
+        if (window.getComputedStyle(host).position === 'static') {
+          host.style.position = 'relative';
+        }
+      } catch (_) {}
+      list.style.position = 'absolute';
+      list.style.left = '0';
+      list.style.right = '0';
+      list.style.top = 'calc(100% + 0.35rem)';
+      list.style.zIndex = '45';
+      list.style.marginTop = '0';
+    }
 
     input.setAttribute('autocomplete', 'off');
     input.setAttribute('autocapitalize', 'off');
@@ -1316,7 +1197,10 @@
         <div class="mb-3">
           <label for="person-search" class="form-label">Find Employee(s)</label>
           <div id="person-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
-          <input type="text" class="form-control" id="person-search" placeholder="Search by ID, name, or username...">
+          <div class="input-group">
+            <input type="text" class="form-control" id="person-search" placeholder="Type name or username...">
+            <button type="button" class="btn btn-outline-secondary" id="person-search-advanced-btn">Advanced Search</button>
+          </div>
           <div id="person-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="mb-3">
@@ -1425,7 +1309,10 @@
       <div class="mb-3">
         <label for="manual-person-search" class="form-label">Add Individual(s)</label>
         <div id="manual-person-tags" class="mb-2 d-flex flex-wrap gap-1"></div>
-        <input type="text" class="form-control" id="manual-person-search" placeholder="Search by ID, name, or username...">
+        <div class="input-group">
+          <input type="text" class="form-control" id="manual-person-search" placeholder="Type name or username...">
+          <button type="button" class="btn btn-outline-secondary" id="manual-person-search-advanced-btn">Advanced Search</button>
+        </div>
         <div id="manual-person-suggestions" class="list-group typeahead-list mt-2" style="display: none; max-height: 200px; overflow-y: auto;"></div>
       </div>
     `;
@@ -2485,38 +2372,13 @@
     close.addEventListener('click', closeAll);
     cancel.addEventListener('click', closeAll);
 
-    search.setAttribute('autocomplete', 'off');
-    search.setAttribute('autocapitalize', 'off');
-    search.setAttribute('autocorrect', 'off');
-    search.setAttribute('spellcheck', 'false');
-    search.setAttribute('data-lpignore', 'true');
-    search.setAttribute('data-1p-ignore', 'true');
-
-    let timer = null;
-    let activeIndex = -1;
-    let currentRows = [];
-
-    function setActiveSuggestion(index) {
-      activeIndex = index;
-      const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-      items.forEach((item, idx) => {
-        item.classList.toggle('active', idx === index);
-      });
-      if (index >= 0 && items[index]) {
-        try { items[index].scrollIntoView({ block: 'nearest' }); } catch (_) {}
-      }
-    }
-
-    function pickRoleSeedRow(index) {
-      const person = currentRows[index];
+    function pickRoleSeedRow(person) {
       if (!person) return;
       const exists = roleSeedPeople.some((existing) => String(existing.id) === String(person.id));
       if (exists) return;
       roleSeedPeople.push(person);
       search.value = '';
       suggestions.style.display = 'none';
-      activeIndex = -1;
-      currentRows = [];
       renderRoleSeedPeople();
       renderRoleSeedMatrix();
       refreshRoleSeedCounts();
@@ -2524,118 +2386,17 @@
       search.focus();
     }
 
-    search.addEventListener('input', (event) => {
-      const query = (event.target.value || '').trim();
-      clearTimeout(timer);
-      if (query.length < 2) {
-        activeIndex = -1;
-        currentRows = [];
-        suggestions.style.display = 'none';
-        return;
-      }
-
-      timer = setTimeout(async () => {
-        try {
-          clearDbErrorBanner();
-          const response = await fetch(`/api/search-employees?q=${encodeURIComponent(query)}`);
-          const data = await response.json();
-          if (data && data.error) {
-            showDbErrorBanner(data.error);
-            suggestions.style.display = 'none';
-            return;
-          }
-
-          const rows = Array.isArray(data) ? data : [];
-          currentRows = rows;
-          activeIndex = -1;
-          if (rows.length === 0) {
-            suggestions.innerHTML = '<div class="list-group-item text-muted">No results</div>';
-            suggestions.style.display = 'block';
-            return;
-          }
-
-          suggestions.innerHTML = rows.map((emp) => `
-            <a href="#" class="list-group-item list-group-item-action" data-role-seed-id="${escapeHtml(emp.id)}" data-index="${rows.indexOf(emp)}">
-              <strong>${escapeHtml((`${emp.first_name || ''} ${emp.last_name || ''}`).trim())}</strong><br>
-              <small>${escapeHtml(emp.job_title || 'No title')} • ${escapeHtml(emp.username || '')}</small>
-            </a>
-          `).join('');
-
-          suggestions.querySelectorAll('a[data-role-seed-id]').forEach((item, idx) => {
-            item.addEventListener('click', (clickEvent) => {
-              clickEvent.preventDefault();
-              pickRoleSeedRow(idx);
-            });
-          });
-
-          suggestions.style.display = 'block';
-        } catch (error) {
-          showDbErrorBanner(error);
-        }
-      }, 200);
-    });
-
-    search.addEventListener('blur', () => {
-      setTimeout(() => { suggestions.style.display = 'none'; }, 200);
-    });
-
-    search.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowDown') {
-        if (suggestions.style.display === 'none') return;
-        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        const next = activeIndex < 0 ? 0 : Math.min(activeIndex + 1, items.length - 1);
-        setActiveSuggestion(next);
-        return;
-      }
-
-      if (event.key === 'ArrowUp') {
-        if (suggestions.style.display === 'none') return;
-        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        if (activeIndex <= 0) {
-          setActiveSuggestion(-1);
-          const len = String(search.value || '').length;
-          if (typeof search.setSelectionRange === 'function') {
-            search.setSelectionRange(len, len);
-          }
-          return;
-        }
-        setActiveSuggestion(activeIndex - 1);
-        return;
-      }
-
-      if (event.key === 'Enter') {
-        if (suggestions.style.display === 'none') return;
-        const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-        if (!items.length) return;
-        event.preventDefault();
-        const index = activeIndex >= 0 ? activeIndex : 0;
-        pickRoleSeedRow(index);
-        return;
-      }
-
-      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
-        return;
-      }
-      if (!String(search.value || '').trim()) {
-        return;
-      }
-      if (suggestions.style.display === 'none') {
-        return;
-      }
-      const items = suggestions.querySelectorAll('a[data-role-seed-id]');
-      if (!items.length) {
-        return;
-      }
-
-      event.preventDefault();
-      const index = activeIndex >= 0 ? activeIndex : 0;
-      pickRoleSeedRow(index);
-      search.focus();
-    });
+    if (window.EmployeeSearch && typeof window.EmployeeSearch.bindTypeahead === 'function') {
+      window.EmployeeSearch.bindTypeahead({
+        inputId: 'role-seed-person-search',
+        listId: 'role-seed-person-suggestions',
+        advancedButtonId: 'role-seed-advanced-search',
+        advancedTitle: 'Advanced Person Search for Role Seeding',
+        onPick: (person) => {
+          pickRoleSeedRow(person);
+        },
+      });
+    }
 
     apply.addEventListener('click', async () => {
       const block = roleBlockById(roleSeedBlockId);

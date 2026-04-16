@@ -19,6 +19,21 @@ EXPORTABLE_FIELDS: Dict[str, str] = {
     "full_part_time": "Full/Part Time",
 }
 
+ADVANCED_SEARCH_COLUMNS: Dict[str, str] = {
+    "employee_id": "EMPLOYEE_ID",
+    "first_name": "FIRST_NAME",
+    "last_name": "LAST_NAME",
+    "username": "USERNAME",
+    "job_title": "JOB_TITLE",
+    "department_id": "DEPARTMENT_ID",
+    "location": "LOCATION",
+    "bu_code": "BU_CODE",
+    "company": "COMPANY",
+    "tree_branch": "TREE_BRANCH",
+    "full_part_time": "FULL_PART_TIME",
+    "job_code": "JOB_CODE",
+}
+
 
 def _sanitize(value: Optional[str]) -> str:
     return (value or "").replace("'", "''").strip()
@@ -30,6 +45,10 @@ def _cache_key(query: Optional[str], first_name: Optional[str], last_name: Optio
         (first_name or "").strip().lower(),
         (last_name or "").strip().lower(),
     )
+
+
+def _non_empty(value: Optional[str]) -> bool:
+    return bool(str(value or "").strip())
 
 
 def _serialize_row(row: Any) -> Dict[str, Any]:
@@ -245,6 +264,95 @@ class EmployeeLookupService:
         FROM omsadm.employee_mv
         WHERE status_code != 'T'
           AND ({' OR '.join(conditions)})
+        ORDER BY FIRST_NAME, LAST_NAME, USERNAME
+        FETCH FIRST {max(1, int(limit))} ROWS ONLY
+        """
+
+        executor = DatabaseExecutor(self.oracle_tns)
+        try:
+            return [_serialize_row(row) for row in executor.run_query(sql)]
+        finally:
+            executor.close()
+
+    def search_candidates_basic(
+        self,
+        query: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Typeahead search restricted to name and username for consistent people-pickers."""
+        search = _sanitize(query)
+        if not search:
+            return []
+
+        sql = f"""
+        SELECT EMPLOYEE_ID,
+               FIRST_NAME,
+               LAST_NAME,
+               USERNAME,
+               EMAIL,
+               JOB_TITLE,
+               DEPARTMENT_ID,
+               LOCATION,
+               BU_CODE,
+               COMPANY,
+               TREE_BRANCH,
+             FULL_PART_TIME,
+             JOB_CODE
+        FROM omsadm.employee_mv
+        WHERE status_code != 'T'
+          AND (
+            UPPER(FIRST_NAME) LIKE UPPER('%{search}%')
+            OR UPPER(LAST_NAME) LIKE UPPER('%{search}%')
+            OR UPPER(FIRST_NAME || ' ' || LAST_NAME) LIKE UPPER('%{search}%')
+            OR UPPER(USERNAME) LIKE UPPER('%{search}%')
+          )
+        ORDER BY FIRST_NAME, LAST_NAME, USERNAME
+        FETCH FIRST {max(1, int(limit))} ROWS ONLY
+        """
+
+        executor = DatabaseExecutor(self.oracle_tns)
+        try:
+            return [_serialize_row(row) for row in executor.run_query(sql)]
+        finally:
+            executor.close()
+
+    def search_candidates_advanced(
+        self,
+        filters: Dict[str, Optional[str]],
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Advanced employee search using supported attributes."""
+        payload = filters or {}
+        conditions = []
+        for key, column in ADVANCED_SEARCH_COLUMNS.items():
+            value = _sanitize(payload.get(key))
+            if not _non_empty(value):
+                continue
+            if key == "full_part_time":
+                conditions.append(f"UPPER({column}) = UPPER('{value}')")
+            else:
+                conditions.append(f"UPPER({column}) LIKE UPPER('%{value}%')")
+
+        if not conditions:
+            return []
+
+        sql = f"""
+        SELECT EMPLOYEE_ID,
+               FIRST_NAME,
+               LAST_NAME,
+               USERNAME,
+               EMAIL,
+               JOB_TITLE,
+               DEPARTMENT_ID,
+               LOCATION,
+               BU_CODE,
+               COMPANY,
+               TREE_BRANCH,
+             FULL_PART_TIME,
+             JOB_CODE
+        FROM omsadm.employee_mv
+        WHERE status_code != 'T'
+          AND ({' AND '.join(conditions)})
         ORDER BY FIRST_NAME, LAST_NAME, USERNAME
         FETCH FIRST {max(1, int(limit))} ROWS ONLY
         """
