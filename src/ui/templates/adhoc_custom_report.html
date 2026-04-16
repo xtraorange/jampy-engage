@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+
+{% block title %}Ad Hoc Custom Report Builder{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <div class="text-muted small mb-1"><a href="{{ url_for('main.adhoc_index') }}">Ad Hoc</a> / Custom Report Builder</div>
+    <h1 class="mb-1">Ad Hoc Custom Report Builder</h1>
+    <small class="text-muted">Select output columns from employee_mv, add where-clause filters, get a count, and export the result.</small>
+  </div>
+</div>
+
+<div id="adhoc-custom-report-error" class="alert alert-danger" style="display:none;"></div>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Columns</h5>
+        <small class="text-muted">Choose the columns you want in the report output.</small>
+      </div>
+      <div class="card-body">
+        <div id="adhoc-columns-status" class="text-muted mb-2">Loading available columns...</div>
+        <div id="adhoc-columns-list" class="row g-2"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="mb-0">Filters</h5>
+          <small class="text-muted">Each filter becomes part of the where clause.</small>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="adhoc-add-filter">Add Filter</button>
+      </div>
+      <div class="card-body">
+        <div id="adhoc-filter-list"></div>
+        <div id="adhoc-filter-empty" class="text-muted">No filters yet. Add one if you want to narrow the result set.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Generated SQL</h5>
+      </div>
+      <div class="card-body">
+        <textarea id="adhoc-sql-preview" class="form-control font-monospace" rows="16" readonly style="font-size: 0.85rem; background: #f5f5f5;"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Actions</h5>
+      </div>
+      <div class="card-body">
+        <button type="button" class="btn btn-outline-secondary w-100 mb-2" id="adhoc-custom-count-btn">Get Count</button>
+        <button type="button" class="btn btn-outline-primary w-100 mb-2" id="adhoc-custom-test-btn" disabled>Test Query Results</button>
+        <div id="adhoc-custom-count-result" class="alert alert-info" style="display:none;"></div>
+        <form id="adhoc-custom-download-form" method="post" action="{{ url_for('main.adhoc_custom_report_download') }}">
+          <input type="hidden" name="selected_columns_json" id="adhoc-selected-columns-json">
+          <input type="hidden" name="filters_json" id="adhoc-filters-json">
+          <button type="submit" class="btn btn-primary w-100" id="adhoc-custom-download-btn" disabled>Download CSV</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="adhoc-custom-test-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Test Query Results</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <span id="adhoc-custom-test-count" class="badge bg-secondary">Count: --</span>
+          <span id="adhoc-custom-test-page" class="text-muted small"></span>
+        </div>
+        <div id="adhoc-custom-test-error" class="alert alert-danger" style="display:none;"></div>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped align-middle">
+            <thead>
+              <tr>
+                <th style="width: 35%;">Name</th>
+                <th style="width: 35%;">Title</th>
+                <th style="width: 30%;">Email</th>
+              </tr>
+            </thead>
+            <tbody id="adhoc-custom-test-rows">
+              <tr><td colspan="3" class="text-muted">Run a test query to view results.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <div>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="adhoc-custom-test-prev">Previous</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="adhoc-custom-test-next">Next</button>
+        </div>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let availableColumns = [];
+  let selectedColumns = [];
+  let filters = [];
+  let adhocCustomTestModal = null;
+  let adhocCustomTestPage = 1;
+  let latestSql = '';
+  const QUERY_TEST_PAGE_SIZE = 100;
+
+  const OPERATORS = [
+    { value: 'equals', label: 'Equals' },
+    { value: 'not_equals', label: 'Does Not Equal' },
+    { value: 'contains', label: 'Contains' },
+    { value: 'starts_with', label: 'Starts With' },
+    { value: 'ends_with', label: 'Ends With' },
+    { value: 'in_list', label: 'In List' },
+    { value: 'is_null', label: 'Is Blank' },
+    { value: 'is_not_null', label: 'Is Not Blank' },
+  ];
+
+  function showCustomError(message) {
+    const box = document.getElementById('adhoc-custom-report-error');
+    box.textContent = String(message || '');
+    box.style.display = message ? '' : 'none';
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function syncPayloadInputs() {
+    document.getElementById('adhoc-selected-columns-json').value = JSON.stringify(selectedColumns);
+    document.getElementById('adhoc-filters-json').value = JSON.stringify(filters);
+    document.getElementById('adhoc-custom-download-btn').disabled = selectedColumns.length === 0;
+    document.getElementById('adhoc-custom-test-btn').disabled = selectedColumns.length === 0;
+  }
+
+  function renderTestRows(rows) {
+    const body = document.getElementById('adhoc-custom-test-rows');
+    if (!body) return;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      body.innerHTML = '<tr><td colspan="3" class="text-muted">No rows found for this page.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.name || '') || '<span class="text-muted">(Unknown)</span>'}</td>
+        <td>${escapeHtml(row.title || '') || '<span class="text-muted">(No title)</span>'}</td>
+        <td class="font-monospace">${escapeHtml(row.email || '')}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderColumns() {
+    const list = document.getElementById('adhoc-columns-list');
+    const status = document.getElementById('adhoc-columns-status');
+    if (!availableColumns.length) {
+      status.textContent = 'No columns available.';
+      list.innerHTML = '';
+      return;
+    }
+    status.textContent = `${availableColumns.length} columns available.`;
+    list.innerHTML = availableColumns.map((item) => `
+      <div class="col-md-6 col-xl-4">
+        <label class="form-check">
+          <input class="form-check-input" type="checkbox" value="${escapeHtml(item.column)}" ${selectedColumns.includes(item.column) ? 'checked' : ''}>
+          <span class="form-check-label">${escapeHtml(item.label)}</span>
+        </label>
+      </div>
+    `).join('');
+  }
+
+  function filterColumnOptions(selected) {
+    return availableColumns.map((item) => `<option value="${escapeHtml(item.column)}" ${item.column === selected ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('');
+  }
+
+  function filterOperatorOptions(selected) {
+    return OPERATORS.map((item) => `<option value="${item.value}" ${item.value === selected ? 'selected' : ''}>${item.label}</option>`).join('');
+  }
+
+  function renderFilters() {
+    const list = document.getElementById('adhoc-filter-list');
+    const empty = document.getElementById('adhoc-filter-empty');
+    empty.style.display = filters.length ? 'none' : '';
+    list.innerHTML = filters.map((filter, index) => `
+      <div class="border rounded p-3 mb-3">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label">Column</label>
+            <select class="form-select" data-filter-field="column" data-filter-index="${index}">
+              ${filterColumnOptions(filter.column)}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Operator</label>
+            <select class="form-select" data-filter-field="operator" data-filter-index="${index}">
+              ${filterOperatorOptions(filter.operator)}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Value</label>
+            <input class="form-control" data-filter-field="value" data-filter-index="${index}" value="${escapeHtml(filter.value || '')}" ${['is_null', 'is_not_null'].includes(filter.operator) ? 'disabled' : ''}>
+          </div>
+          <div class="col-md-1 d-grid">
+            <button type="button" class="btn btn-outline-danger" data-remove-filter="${index}">X</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function updatePreview() {
+    syncPayloadInputs();
+    if (!selectedColumns.length) {
+      document.getElementById('adhoc-sql-preview').value = 'Select at least one output column.';
+      return;
+    }
+    const response = await fetch('/api/adhoc-custom-report-sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selected_columns: selectedColumns, filters }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.error || 'Unable to generate SQL.');
+    }
+    latestSql = data.sql || '';
+    document.getElementById('adhoc-sql-preview').value = latestSql;
+  }
+
+  async function ensureLatestSql() {
+    await updatePreview();
+    if (!latestSql) {
+      throw new Error('Unable to generate SQL.');
+    }
+    return latestSql;
+  }
+
+  async function loadAdhocCustomTestPage(page) {
+    const countChip = document.getElementById('adhoc-custom-test-count');
+    const pageText = document.getElementById('adhoc-custom-test-page');
+    const errorBox = document.getElementById('adhoc-custom-test-error');
+    const prev = document.getElementById('adhoc-custom-test-prev');
+    const next = document.getElementById('adhoc-custom-test-next');
+
+    if (errorBox) {
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+    }
+    if (countChip) {
+      countChip.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Count: loading...';
+    }
+    if (pageText) {
+      pageText.textContent = 'Loading...';
+    }
+
+    try {
+      const sql = await ensureLatestSql();
+      const response = await fetch('/api/test-query-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql, page, page_size: QUERY_TEST_PAGE_SIZE }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Unable to test query.');
+      }
+
+      adhocCustomTestPage = data.page || page;
+      renderTestRows(data.rows || []);
+      if (countChip) countChip.textContent = `Count: ${data.count ?? 0}`;
+      if (pageText) pageText.textContent = `Page ${data.page} of ${data.total_pages}`;
+      if (prev) prev.disabled = (data.page || 1) <= 1;
+      if (next) next.disabled = (data.page || 1) >= (data.total_pages || 1);
+    } catch (error) {
+      renderTestRows([]);
+      if (countChip) countChip.textContent = 'Count: --';
+      if (pageText) pageText.textContent = '';
+      if (errorBox) {
+        errorBox.textContent = String(error);
+        errorBox.style.display = '';
+      }
+      if (prev) prev.disabled = true;
+      if (next) next.disabled = true;
+    }
+  }
+
+  async function loadColumns() {
+    const response = await fetch('/api/adhoc-report-columns');
+    const data = await response.json();
+    if (!response.ok || !Array.isArray(data)) {
+      throw new Error('Unable to load available report columns.');
+    }
+    availableColumns = data;
+    renderColumns();
+    renderFilters();
+    syncPayloadInputs();
+  }
+
+  document.getElementById('adhoc-columns-list').addEventListener('change', async (event) => {
+    const checkbox = event.target.closest('input[type="checkbox"]');
+    if (!checkbox) return;
+    const column = checkbox.value;
+    if (checkbox.checked) {
+      if (!selectedColumns.includes(column)) {
+        selectedColumns.push(column);
+      }
+    } else {
+      selectedColumns = selectedColumns.filter((item) => item !== column);
+    }
+    try {
+      showCustomError('');
+      await updatePreview();
+    } catch (error) {
+      showCustomError(error);
+    }
+  });
+
+  document.getElementById('adhoc-add-filter').addEventListener('click', async () => {
+    const firstColumn = availableColumns[0] ? availableColumns[0].column : '';
+    filters.push({ column: firstColumn, operator: 'equals', value: '' });
+    renderFilters();
+    try {
+      showCustomError('');
+      await updatePreview();
+    } catch (error) {
+      showCustomError(error);
+    }
+  });
+
+  document.getElementById('adhoc-filter-list').addEventListener('input', async (event) => {
+    const field = event.target.getAttribute('data-filter-field');
+    const index = Number(event.target.getAttribute('data-filter-index'));
+    if (!field || Number.isNaN(index) || !filters[index]) return;
+    filters[index][field] = event.target.value;
+    if (field === 'operator') {
+      if (['is_null', 'is_not_null'].includes(filters[index].operator)) {
+        filters[index].value = '';
+      }
+      renderFilters();
+    }
+    try {
+      showCustomError('');
+      await updatePreview();
+    } catch (error) {
+      showCustomError(error);
+    }
+  });
+
+  document.getElementById('adhoc-filter-list').addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-remove-filter]');
+    if (!button) return;
+    filters.splice(Number(button.getAttribute('data-remove-filter')), 1);
+    renderFilters();
+    try {
+      showCustomError('');
+      await updatePreview();
+    } catch (error) {
+      showCustomError(error);
+    }
+  });
+
+  document.getElementById('adhoc-custom-count-btn').addEventListener('click', async () => {
+    const result = document.getElementById('adhoc-custom-count-result');
+    try {
+      showCustomError('');
+      result.style.display = '';
+      result.textContent = 'Counting...';
+      const response = await fetch('/api/adhoc-custom-report-count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selected_columns: selectedColumns, filters }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Unable to count rows.');
+      }
+      result.textContent = `Count: ${data.count}`;
+      latestSql = data.sql || latestSql;
+      document.getElementById('adhoc-sql-preview').value = latestSql || document.getElementById('adhoc-sql-preview').value;
+    } catch (error) {
+      result.style.display = 'none';
+      showCustomError(error);
+    }
+  });
+
+  document.getElementById('adhoc-custom-test-btn').addEventListener('click', async () => {
+    if (!adhocCustomTestModal) {
+      adhocCustomTestModal = new bootstrap.Modal(document.getElementById('adhoc-custom-test-modal'));
+    }
+    adhocCustomTestPage = 1;
+    adhocCustomTestModal.show();
+    await loadAdhocCustomTestPage(1);
+  });
+
+  document.getElementById('adhoc-custom-test-prev').addEventListener('click', async () => {
+    if (adhocCustomTestPage <= 1) return;
+    await loadAdhocCustomTestPage(adhocCustomTestPage - 1);
+  });
+
+  document.getElementById('adhoc-custom-test-next').addEventListener('click', async () => {
+    await loadAdhocCustomTestPage(adhocCustomTestPage + 1);
+  });
+
+  document.getElementById('adhoc-custom-download-form').addEventListener('submit', (event) => {
+    syncPayloadInputs();
+    if (!selectedColumns.length) {
+      event.preventDefault();
+    }
+  });
+
+  (async () => {
+    try {
+      await loadColumns();
+      document.getElementById('adhoc-sql-preview').value = 'Select one or more columns to generate SQL.';
+    } catch (error) {
+      showCustomError(error);
+      document.getElementById('adhoc-columns-status').textContent = 'Unable to load columns.';
+    }
+  })();
+</script>
+{% endblock %}

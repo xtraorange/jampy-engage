@@ -5,6 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
+    <div class="text-muted small mb-1"><a href="{{ url_for('main.adhoc_index') }}">Ad Hoc</a> / Name Matcher</div>
     <h1 class="mb-1">Ad Hoc Name Matcher</h1>
     <small class="text-muted">Upload a CSV of names, review possible employee matches, and export enriched columns.</small>
   </div>
@@ -153,6 +154,8 @@
   }
 </script>
 
+<script src="{{ url_for('static', filename='js/employee_search.js') }}"></script>
+
 {% if match_results %}
 
 <div class="row g-3 mb-4">
@@ -254,6 +257,45 @@
   </div>
 </div>
 
+<div id="person-picker-modal" class="matcher-modal" hidden>
+  <div class="matcher-modal-backdrop"></div>
+  <div class="matcher-modal-dialog card" style="max-width: 820px;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Find and Add Person</h5>
+      <button type="button" class="btn-close" id="close-person-picker-modal" aria-label="Close"></button>
+    </div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label for="person-picker-search" class="form-label">Search by ID, name, username, or email</label>
+        <form id="person-picker-search-form" class="d-flex gap-2">
+          <input type="text" id="person-picker-search" class="form-control" minlength="2" placeholder="Type at least 2 characters...">
+          <button type="submit" class="btn btn-primary">Search</button>
+        </form>
+      </div>
+      <div id="person-picker-status" class="text-muted small mb-2">Search to find a person and add them to this row.</div>
+      <div id="person-picker-error" class="alert alert-danger" style="display:none;"></div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Username</th>
+              <th>Job Title</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="person-picker-results">
+            <tr><td colspan="4" class="text-muted">No search results yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-end">
+      <button type="button" class="btn btn-outline-secondary" id="cancel-person-picker-modal">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <form id="download-form" method="post" action="{{ url_for('main.adhoc_match_download') }}" hidden>
   <input type="hidden" name="state_token" id="state_token" value="{{ state_token or '' }}">
   <input type="hidden" name="selection_overrides_json" id="selection_overrides_json">
@@ -288,6 +330,8 @@
   const PAGE_SIZE = 20;
   let currentPage = 0;
   let currentFilter = 'all';
+  let personPickerResults = [];
+  let personPickerRowIndex = null;
   const matchState = JSON.parse(document.getElementById('match-data').textContent || '{"headers":[],"rows":[]}');
   const initialSelections = new Map(
     (matchState.rows || []).map(row => [
@@ -362,7 +406,7 @@
           const isSelected = row.selected_index === matchIndex ? 'selected' : '';
           return `<option value="${matchIndex}" ${isSelected}>${label}${details ? ' - ' + details : ''}</option>`;
         })
-      ).join('');
+      ).concat('<option value="__find__">Find person...</option>').join('');
 
       return `
         <tr>
@@ -397,6 +441,50 @@
     document.getElementById('download-modal').hidden = true;
   }
 
+  function openPersonPicker(rowIndex) {
+    personPickerRowIndex = rowIndex;
+    personPickerResults = [];
+    document.getElementById('person-picker-modal').hidden = false;
+    document.getElementById('person-picker-search').value = '';
+    document.getElementById('person-picker-status').textContent = 'Search to find a person and add them to this row.';
+    document.getElementById('person-picker-error').style.display = 'none';
+    document.getElementById('person-picker-error').textContent = '';
+    document.getElementById('person-picker-results').innerHTML = '<tr><td colspan="4" class="text-muted">No search results yet.</td></tr>';
+    document.getElementById('person-picker-search').focus();
+  }
+
+  function closePersonPicker() {
+    document.getElementById('person-picker-modal').hidden = true;
+    personPickerRowIndex = null;
+    personPickerResults = [];
+  }
+
+  function renderPersonPickerResults(rows) {
+    const tbody = document.getElementById('person-picker-results');
+    if (!Array.isArray(rows) || rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No matching people found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map((person, index) => `
+      <tr>
+        <td>
+          <div>${[person.first_name, person.last_name].filter(Boolean).join(' ') || '<span class="text-muted">(Unknown)</span>'}</div>
+          <div class="text-muted small">${person.id || ''}${person.email ? ` | ${person.email}` : ''}</div>
+        </td>
+        <td class="font-monospace">${person.username || ''}</td>
+        <td>${person.job_title || ''}</td>
+        <td><button type="button" class="btn btn-outline-primary btn-sm" data-picker-add-index="${index}">Add to Row</button></td>
+      </tr>
+    `).join('');
+  }
+
+  function matchIdentityKey(person) {
+    return String(
+      (person && (person.id || person.username || person.email || `${person.first_name || ''}_${person.last_name || ''}`)) || ''
+    ).trim().toLowerCase();
+  }
+
   document.getElementById('match-table-body').addEventListener('change', (event) => {
     const selector = event.target.closest('.match-selector');
     if (!selector) return;
@@ -404,6 +492,12 @@
     const selectedValue = selector.value;
     const row = matchState.rows.find(item => item.row_index === rowIndex);
     if (!row) return;
+    if (selectedValue === '__find__') {
+      selector.value = Number.isInteger(row.selected_index) ? String(row.selected_index) : '';
+      openPersonPicker(rowIndex);
+      return;
+    }
+
     row.selected_index = selectedValue === '' ? null : Number(selectedValue);
     updateMetrics();
     renderTable();
@@ -450,7 +544,80 @@
     document.getElementById('selection_overrides_json').value = JSON.stringify(overrides);
     document.getElementById('download_scope').value = scopeValue;
     document.getElementById('selected_fields_csv').value = fields.join(',');
+    showAdhocLoading('Generating CSV', 'Preparing matched report download...', 'Your browser download will begin shortly');
     document.getElementById('download-form').submit();
+  });
+
+  document.getElementById('close-person-picker-modal').addEventListener('click', closePersonPicker);
+  document.getElementById('cancel-person-picker-modal').addEventListener('click', closePersonPicker);
+  document.querySelector('#person-picker-modal .matcher-modal-backdrop').addEventListener('click', closePersonPicker);
+
+  document.getElementById('person-picker-search-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.getElementById('person-picker-status');
+    const errorBox = document.getElementById('person-picker-error');
+    const query = window.EmployeeSearch.normalizeQuery(document.getElementById('person-picker-search').value);
+
+    errorBox.style.display = 'none';
+    errorBox.textContent = '';
+
+    if (query.length < 2) {
+      status.textContent = 'Enter at least 2 characters to search.';
+      renderPersonPickerResults([]);
+      return;
+    }
+
+    status.textContent = `Searching for "${query}"...`;
+    try {
+      personPickerResults = await window.EmployeeSearch.search(query);
+      status.textContent = `${personPickerResults.length} result${personPickerResults.length === 1 ? '' : 's'} found.`;
+      renderPersonPickerResults(personPickerResults);
+    } catch (error) {
+      status.textContent = 'Search failed.';
+      errorBox.textContent = String(error);
+      errorBox.style.display = '';
+    }
+  });
+
+  document.getElementById('person-picker-results').addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-picker-add-index]');
+    if (!button || !Number.isInteger(personPickerRowIndex)) return;
+    const row = matchState.rows.find((item) => item.row_index === personPickerRowIndex);
+    if (!row) return;
+
+    const picked = personPickerResults[Number(button.getAttribute('data-picker-add-index'))];
+    if (!picked) return;
+
+    const newCandidate = {
+      id: picked.id || '',
+      first_name: picked.first_name || '',
+      last_name: picked.last_name || '',
+      username: picked.username || '',
+      email: picked.email || '',
+      job_title: picked.job_title || '',
+      department_id: picked.department_id || '',
+      location: picked.location || '',
+      bu_code: picked.bu_code || '',
+      company: picked.company || '',
+      tree_branch: picked.tree_branch || '',
+      full_part_time: picked.full_part_time || '',
+    };
+
+    const key = matchIdentityKey(newCandidate);
+    let selectedIndex = row.matches.findIndex((candidate) => matchIdentityKey(candidate) === key);
+    if (selectedIndex < 0) {
+      row.matches.push(newCandidate);
+      selectedIndex = row.matches.length - 1;
+    }
+
+    row.selected_index = selectedIndex;
+    if (!row.match_source || row.match_source === 'none') {
+      row.match_source = 'manual';
+    }
+
+    closePersonPicker();
+    updateMetrics();
+    renderTable();
   });
 
   const queryElapsedMs = Number({{ lookup_stats.elapsed_ms if lookup_stats else 0 }});

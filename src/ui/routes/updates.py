@@ -290,6 +290,19 @@ def init_updates_routes(app, base_path: str):
             "query_builder.html",
             group_handle=group_handle,
             group_name=group_name,
+            adhoc_mode=False,
+            cancel_url="",
+        )
+
+    @updates_bp.route("/adhoc/query-builder", methods=["GET"])
+    def adhoc_query_builder():
+        """Ad hoc query builder that can count or export without saving a group."""
+        return render_template(
+            "query_builder.html",
+            group_handle="",
+            group_name="",
+            adhoc_mode=True,
+            cancel_url=url_for("main.adhoc_index"),
         )
 
     @updates_bp.route("/backup")

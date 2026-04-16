@@ -651,6 +651,9 @@
             <a class="nav-link {% if request.endpoint == 'tags.tags' %}active{% endif %}" href="{{ url_for('tags.tags') }}">Tags</a>
           </li>
           <li class="nav-item">
+            <a class="nav-link {% if request.path.startswith('/adhoc') %}active{% endif %}" href="{{ url_for('main.adhoc_index') }}">Ad Hoc</a>
+          </li>
+          <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'main.settings' %}active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
           </li>
         </ul>

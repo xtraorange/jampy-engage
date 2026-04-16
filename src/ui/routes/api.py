@@ -5,6 +5,11 @@ import sys
 from datetime import datetime
 
 from ...services.config_service import ConfigService
+from ...services.adhoc_service import (
+    build_custom_employee_sql,
+    label_for_column,
+    load_employee_mv_columns,
+)
 from ...services.employee_lookup_service import EmployeeLookupService
 from ...sql_builder import generate_safe_hierarchy_sql
 from ...query_explainer import explain_builder_query
@@ -87,6 +92,53 @@ def init_api_routes(app, base_path: str):
             print(f"DEBUG: Search error logged to {log_path}")
             # return full message if short number or generic
             return jsonify({"error": err_msg}), 500
+
+    @api_bp.route("/api/adhoc-report-columns", methods=["GET"])
+    def adhoc_report_columns():
+        """Return the available employee_mv columns for ad hoc custom reporting."""
+        cfg = config_service.load_general_config()
+        columns = load_employee_mv_columns(cfg.get("oracle_tns"))
+        return jsonify([
+            {
+                "column": column,
+                "label": label_for_column(column),
+            }
+            for column in columns
+        ])
+
+    @api_bp.route("/api/adhoc-custom-report-sql", methods=["POST"])
+    def adhoc_custom_report_sql():
+        """Build validated SQL for the ad hoc custom report workflow."""
+        cfg = config_service.load_general_config()
+        payload = request.get_json(silent=True) or {}
+        selected_columns = payload.get("selected_columns") or []
+        filters = payload.get("filters") or []
+        allowed_columns = load_employee_mv_columns(cfg.get("oracle_tns"))
+        try:
+            sql = build_custom_employee_sql(selected_columns, filters, allowed_columns)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"sql": sql})
+
+    @api_bp.route("/api/adhoc-custom-report-count", methods=["POST"])
+    def adhoc_custom_report_count():
+        """Count rows for the ad hoc custom report workflow."""
+        cfg = config_service.load_general_config()
+        payload = request.get_json(silent=True) or {}
+        selected_columns = payload.get("selected_columns") or []
+        filters = payload.get("filters") or []
+        allowed_columns = load_employee_mv_columns(cfg.get("oracle_tns"))
+        try:
+            sql = build_custom_employee_sql(selected_columns, filters, allowed_columns)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        executor = DatabaseExecutor(cfg.get("oracle_tns"))
+        try:
+            count = _extract_count_value(executor.run_query(f"SELECT COUNT(*) AS CNT FROM ({sql})"))
+        finally:
+            executor.close()
+        return jsonify({"count": count, "sql": sql})
 
 
     @api_bp.route("/api/get-all-values", methods=["GET"])

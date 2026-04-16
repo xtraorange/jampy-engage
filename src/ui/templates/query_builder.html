@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 
-{% block title %}Query Builder{% endblock %}
+{% block title %}{% if adhoc_mode %}Ad Hoc Query Builder{% else %}Query Builder{% endif %}{% endblock %}
 
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
+    {% if adhoc_mode %}
+    <div class="text-muted small mb-1"><a href="{{ url_for('main.adhoc_index') }}">Ad Hoc</a> / Query Builder</div>
+    <h1 class="mb-0">Ad Hoc Query Builder</h1>
+    <div class="text-muted small mt-1">Build a query, get a count, and export a report without saving a group.</div>
+    {% else %}
     <h1 class="mb-0">Query Builder</h1>
     {% if group_name or group_handle %}
     <div class="text-muted small mt-1">Building query for {{ group_name or group_handle }}{% if group_handle and group_name and group_handle != group_name %} ({{ group_handle }}){% endif %}</div>
+    {% endif %}
     {% endif %}
   </div>
 </div>
@@ -77,14 +83,38 @@
           <h5 class="mb-0">Actions</h5>
         </div>
         <div class="card-body">
-          <button type="button" id="btn-accept-sql" class="btn btn-success w-100 mb-2" style="display: none;">Accept This Query</button>
+          <button type="button" id="btn-accept-sql" class="btn btn-success w-100 mb-2" style="display: none;">{% if adhoc_mode %}Download Query CSV{% else %}Accept This Query{% endif %}</button>
+          {% if adhoc_mode %}
+          <button type="button" id="btn-create-group" class="btn btn-outline-success w-100 mb-2" style="display: none;">Create New Group from Query</button>
+          {% endif %}
           <button type="button" id="btn-test-query-modal" class="btn btn-outline-primary w-100 mb-2" style="display: none;">Test Query</button>
           <button type="button" id="btn-explain-query" class="btn btn-outline-secondary w-100 mb-2" style="display: none;">Plain-English Summary</button>
+          {% if not adhoc_mode %}
           <button type="button" id="btn-edit-sql" class="btn btn-warning w-100 mb-2">Edit SQL Manually</button>
+          {% endif %}
           <button type="button" id="btn-cancel" class="btn btn-outline-secondary w-100">Cancel</button>
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+{% if adhoc_mode %}
+<form id="adhoc-query-download-form" method="post" action="{{ url_for('main.adhoc_query_builder_download') }}" hidden>
+  <input type="hidden" name="sql" id="adhoc-query-download-sql">
+</form>
+{% endif %}
+
+<div id="query-builder-loading-overlay" class="position-fixed top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="display: none; background-color: rgba(0, 0, 0, 0.45); z-index: 9999;">
+  <div class="card text-center p-4" style="min-width: 360px; max-width: 520px;">
+    <div class="mb-3">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+    <h5 class="mb-1" id="query-builder-loading-phase">Working</h5>
+    <p class="text-muted mb-1" id="query-builder-loading-detail">Processing request...</p>
+    <small class="text-muted" id="query-builder-loading-subdetail"></small>
   </div>
 </div>
 
@@ -316,6 +346,16 @@
   let queryExplainModal = null;
   let queryTestPage = 1;
   const QUERY_TEST_PAGE_SIZE = 100;
+  const isAdhocMode = {{ 'true' if adhoc_mode else 'false' }};
+  const cancelUrl = {{ cancel_url|tojson }};
+
+  function showBuilderLoading(phase, detail, subdetail) {
+    const overlay = document.getElementById('query-builder-loading-overlay');
+    document.getElementById('query-builder-loading-phase').textContent = phase || 'Working';
+    document.getElementById('query-builder-loading-detail').textContent = detail || 'Processing request...';
+    document.getElementById('query-builder-loading-subdetail').textContent = subdetail || '';
+    overlay.style.display = 'flex';
+  }
 
   const ROLE_ATTR_ROWS = [
     { key: 'job_title', label: 'Job Title/Code', attrKey: 'job_titles_display' },
@@ -347,6 +387,9 @@
   }
 
   function confirmLeaveIfDirty() {
+    if (isAdhocMode) {
+      return true;
+    }
     if (!hasUnsavedChanges || allowExit) {
       return true;
     }
@@ -1796,6 +1839,7 @@
     const btnTestModal = document.getElementById('btn-test-query-modal');
     const btnExplain = document.getElementById('btn-explain-query');
     const btnAccept = document.getElementById('btn-accept-sql');
+    const btnCreateGroup = document.getElementById('btn-create-group');
     const wholeCount = document.getElementById('whole-query-count');
 
     resetTestResult();
@@ -1808,6 +1852,7 @@
       if (btnTestModal) btnTestModal.style.display = 'none';
       if (btnExplain) btnExplain.style.display = 'none';
       btnAccept.style.display = 'none';
+      if (btnCreateGroup) btnCreateGroup.style.display = 'none';
       return;
     }
 
@@ -1826,6 +1871,7 @@
         if (btnTestModal) btnTestModal.style.display = 'none';
         if (btnExplain) btnExplain.style.display = 'none';
         btnAccept.style.display = 'none';
+        if (btnCreateGroup) btnCreateGroup.style.display = 'none';
         return;
       }
 
@@ -1835,6 +1881,7 @@
       if (btnTestModal) btnTestModal.style.display = 'block';
       if (btnExplain) btnExplain.style.display = 'block';
       btnAccept.style.display = 'inline-block';
+      if (btnCreateGroup) btnCreateGroup.style.display = 'inline-block';
     } catch (error) {
       showDbErrorBanner(error);
       preview.value = `Error generating SQL: ${error}`;
@@ -1842,6 +1889,7 @@
       if (btnTestModal) btnTestModal.style.display = 'none';
       if (btnExplain) btnExplain.style.display = 'none';
       btnAccept.style.display = 'none';
+      if (btnCreateGroup) btnCreateGroup.style.display = 'none';
     }
   }
 
@@ -2014,6 +2062,16 @@
   });
 
   document.getElementById('btn-accept-sql').addEventListener('click', () => {
+    if (isAdhocMode) {
+      if (!currentSQL) return;
+      const downloadInput = document.getElementById('adhoc-query-download-sql');
+      const downloadForm = document.getElementById('adhoc-query-download-form');
+      if (!downloadInput || !downloadForm) return;
+      downloadInput.value = currentSQL;
+      showBuilderLoading('Generating CSV', 'Preparing your ad hoc report...', 'Your browser download will begin shortly');
+      downloadForm.submit();
+      return;
+    }
     allowExit = true;
     markSaved();
     sessionStorage.setItem('accepted_query_builder_params', JSON.stringify(builderPayload()));
@@ -2026,24 +2084,44 @@
     }
   });
 
-  document.getElementById('btn-edit-sql').addEventListener('click', () => {
-    allowExit = true;
-    if (currentSQL) {
-      sessionStorage.setItem('accepted_query_sql', currentSQL);
-    }
-    const returnTo = sessionStorage.getItem('return_to');
-    if (returnTo) {
-      sessionStorage.removeItem('return_to');
-      window.location.href = returnTo;
-    } else {
+  const btnEditSql = document.getElementById('btn-edit-sql');
+  if (btnEditSql) {
+    btnEditSql.addEventListener('click', () => {
+      allowExit = true;
+      if (currentSQL) {
+        sessionStorage.setItem('accepted_query_sql', currentSQL);
+      }
+      const returnTo = sessionStorage.getItem('return_to');
+      if (returnTo) {
+        sessionStorage.removeItem('return_to');
+        window.location.href = returnTo;
+      } else {
+        window.location.href = '/group/new';
+      }
+    });
+  }
+
+  const btnCreateGroup = document.getElementById('btn-create-group');
+  if (btnCreateGroup) {
+    btnCreateGroup.addEventListener('click', () => {
+      if (!currentSQL) return;
+      allowExit = true;
+      markSaved();
+      sessionStorage.setItem('query_builder_initial_params', JSON.stringify(builderPayload()));
+      sessionStorage.setItem('accepted_query_builder_params', JSON.stringify(builderPayload()));
+      showBuilderLoading('Opening Group Creation', 'Carrying this query into a new group...', 'You can finish group details on the next page');
       window.location.href = '/group/new';
-    }
-  });
+    });
+  }
 
   document.getElementById('btn-cancel').addEventListener('click', () => {
     if (confirmLeaveIfDirty()) {
       allowExit = true;
-      window.history.back();
+      if (cancelUrl) {
+        window.location.href = cancelUrl;
+      } else {
+        window.history.back();
+      }
     }
   });
 
@@ -2616,6 +2694,9 @@
 
   document.querySelectorAll('a[href]').forEach((link) => {
     link.addEventListener('click', (event) => {
+      if (isAdhocMode) {
+        return;
+      }
       if (!confirmLeaveIfDirty()) {
         event.preventDefault();
       }
@@ -2623,6 +2704,9 @@
   });
 
   window.addEventListener('beforeunload', (event) => {
+    if (isAdhocMode) {
+      return;
+    }
     if (!hasUnsavedChanges || allowExit) {
       return;
     }
