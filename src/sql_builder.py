@@ -1,5 +1,7 @@
 """SQL query builder for generating hierachical employee queries."""
 
+from .utils import active_employee_filter, single_or_in_condition
+
 
 def _extract_job_code(value: str) -> str:
     """Return job code from values like 'CODE - TITLE' (or raw code if no separator)."""
@@ -54,16 +56,6 @@ def _normalize_string_list(values) -> list:
         return [raw] if raw else []
     return []
 
-
-def _single_or_in_condition(column: str, values: list) -> str:
-    """Return SQL equality for one value, or IN (...) for multiple values."""
-    normalized = _normalize_string_list(values)
-    if not normalized:
-        return ""
-    if len(normalized) == 1:
-        return f"{column} = '{normalized[0]}'"
-    csv = ",".join([f"'{value}'" for value in normalized])
-    return f"{column} IN ({csv})"
 
 def generate_hierarchy_sql(
     mode: str,  # "by_person" or "by_role"/"by_attributes" or "all_employees"
@@ -138,7 +130,7 @@ def generate_hierarchy_sql(
         if filter_full_part_time:
             filter_where_parts.append(f"cte.FULL_PART_TIME = '{filter_full_part_time}'")
 
-        where_clause = "\nWHERE cte.status_code != 'T'"
+        where_clause = f"\nWHERE {active_employee_filter('cte')}"
         if filter_where_parts:
             where_clause += "\n  AND " + "\n  AND ".join(filter_where_parts)
 
@@ -167,7 +159,7 @@ FROM omsadm.employee_mv cte{where_clause}"""
             pid = person.get('person_id')
             pusername = person.get('person_username')
             
-            where_parts = ["status_code != 'T'"]
+            where_parts = [active_employee_filter()]
             
             if pusername:
                 where_parts.append(f"AND USERNAME = '{pusername}'")
@@ -186,7 +178,7 @@ FROM omsadm.employee_mv cte{where_clause}"""
         first_pid = first_person.get('person_id')
         first_pusername = first_person.get('person_username')
         
-        where_parts = ["status_code != 'T'"]
+        where_parts = [active_employee_filter()]
         if first_pusername:
             where_parts.append(f"AND USERNAME = '{first_pusername}'")
         elif first_pid:
@@ -213,24 +205,24 @@ FROM omsadm.employee_mv cte{where_clause}"""
         ):
             raise ValueError("Must provide at least one attribute for by_role mode")
         
-        where_parts = ["status_code != 'T'"]
+        where_parts = [active_employee_filter()]
         
-        job_code_condition = _single_or_in_condition("JOB_CODE", resolved_job_codes)
+        job_code_condition = single_or_in_condition("JOB_CODE", resolved_job_codes)
         if job_code_condition:
             where_parts.append(f"AND {job_code_condition}")
-        bu_code_condition = _single_or_in_condition("BU_CODE", resolved_bu_codes)
+        bu_code_condition = single_or_in_condition("BU_CODE", resolved_bu_codes)
         if bu_code_condition:
             where_parts.append(f"AND {bu_code_condition}")
-        location_condition = _single_or_in_condition("LOCATION", resolved_locations)
+        location_condition = single_or_in_condition("LOCATION", resolved_locations)
         if location_condition:
             where_parts.append(f"AND {location_condition}")
-        company_condition = _single_or_in_condition("COMPANY", resolved_companies)
+        company_condition = single_or_in_condition("COMPANY", resolved_companies)
         if company_condition:
             where_parts.append(f"AND {company_condition}")
-        tree_branch_condition = _single_or_in_condition("TREE_BRANCH", resolved_tree_branches)
+        tree_branch_condition = single_or_in_condition("TREE_BRANCH", resolved_tree_branches)
         if tree_branch_condition:
             where_parts.append(f"AND {tree_branch_condition}")
-        department_id_condition = _single_or_in_condition("DEPARTMENT_ID", resolved_department_ids)
+        department_id_condition = single_or_in_condition("DEPARTMENT_ID", resolved_department_ids)
         if department_id_condition:
             where_parts.append(f"AND {department_id_condition}")
         
@@ -250,7 +242,7 @@ FROM omsadm.employee_mv cte{where_clause}"""
                 pid = person.get('person_id')
                 pusername = person.get('person_username')
 
-                root_lookup = "status_code != 'T'"
+                root_lookup = active_employee_filter()
                 if pusername:
                     root_lookup += f" AND USERNAME = '{pusername}'"
                 elif pid:
@@ -266,7 +258,7 @@ FROM omsadm.employee_mv cte{where_clause}"""
        TREE_BRANCH,
        FULL_PART_TIME
 FROM omsadm.employee_mv
-WHERE status_code != 'T'
+WHERE {active_employee_filter()}
   AND SUPERVISOR_ID IN (
       SELECT EMPLOYEE_ID
       FROM omsadm.employee_mv
@@ -284,7 +276,7 @@ WHERE status_code != 'T'
        TREE_BRANCH,
        FULL_PART_TIME
 FROM omsadm.employee_mv
-WHERE status_code != 'T'
+WHERE {active_employee_filter()}
   AND SUPERVISOR_ID IN (
       SELECT EMPLOYEE_ID
       FROM omsadm.employee_mv
@@ -296,7 +288,7 @@ WHERE status_code != 'T'
             pid = person.get('person_id')
             pusername = person.get('person_username')
             
-            person_where = "status_code != 'T'"
+            person_where = active_employee_filter()
             if pusername:
                 person_where += f" AND USERNAME = '{pusername}'"
             elif pid:
@@ -322,7 +314,7 @@ WHERE status_code != 'T'
 FROM omsadm.employee_mv
 START WITH {person_where}
 CONNECT BY PRIOR EMPLOYEE_ID = SUPERVISOR_ID
-AND status_code != 'T'{connect_by_exclude}""")
+AND {active_employee_filter()}{connect_by_exclude}""")
         
         hierarchy_sql = "\nUNION ALL\n".join(hierarchy_parts)
     else:
@@ -340,7 +332,7 @@ AND status_code != 'T'{connect_by_exclude}""")
 FROM omsadm.employee_mv
     START WITH {root_where}
 CONNECT BY PRIOR EMPLOYEE_ID = SUPERVISOR_ID
-AND status_code != 'T'{f" AND USERNAME <> '{person_username}'" if mode=='by_person' and person_username else (f" AND EMPLOYEE_ID <> '{person_id}'" if mode=='by_person' and person_id else '')}"""
+AND {active_employee_filter()}{f" AND USERNAME <> '{person_username}'" if mode=='by_person' and person_username else (f" AND EMPLOYEE_ID <> '{person_id}'" if mode=='by_person' and person_id else '')}"""
     
     # Build additional filters
     filter_where_parts = []
@@ -411,7 +403,7 @@ FROM ({hierarchy_sql}) cte{where_clause}"""
             if root_conds:
                 union_parts.append(f"""SELECT USERNAME
 FROM omsadm.employee_mv
-WHERE status_code != 'T'
+WHERE {active_employee_filter()}
   AND ({' OR '.join(root_conds)})""")
         else:  # by_role / by_attributes
             union_parts.append(f"""SELECT USERNAME
@@ -427,7 +419,7 @@ WHERE {root_where}""")
                 addition_conditions.append(f"EMPLOYEE_ID = '{person.get('person_id')}'")
         union_parts.append(f"""SELECT USERNAME
 FROM omsadm.employee_mv
-WHERE status_code != 'T'
+WHERE {active_employee_filter()}
   AND ({' OR '.join(addition_conditions)})""")
 
     if len(union_parts) == 1:
@@ -504,7 +496,7 @@ def _manual_individuals_sql(persons: list) -> str:
 
     return f"""SELECT USERNAME
 FROM omsadm.employee_mv
-WHERE status_code != 'T'
+WHERE {active_employee_filter()}
   AND ({' OR '.join(conditions)})"""
 
 

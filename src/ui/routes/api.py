@@ -14,50 +14,8 @@ from ...services.employee_lookup_service import EmployeeLookupService
 from ...sql_builder import generate_safe_hierarchy_sql
 from ...query_explainer import explain_builder_query
 from ...db import DatabaseExecutor
+from ...utils import ACTIVE_EMPLOYEE_FILTER, SEARCH_VALUE_COLUMNS, extract_count_value, row_value, single_or_in_condition
 
-
-def _extract_count_value(row) -> int:
-    """Extract integer count from dict/tuple DB rows with varying key names."""
-    if not row:
-        return 0
-    first = row[0]
-    if isinstance(first, dict):
-        for key in ("COUNT(*)", "CNT", "count", "count(*)", "cnt"):
-            if key in first:
-                try:
-                    return int(first[key])
-                except (TypeError, ValueError):
-                    return 0
-        try:
-            return int(next(iter(first.values())))
-        except Exception:
-            return 0
-    try:
-        return int(first[0])
-    except Exception:
-        return 0
-
-
-def _row_value(row, key: str, fallback_index: int = 0):
-    """Get value from dict/tuple row with a case-insensitive key fallback."""
-    if isinstance(row, dict):
-        key_l = key.lower()
-        for candidate, value in row.items():
-            if str(candidate).lower() == key_l:
-                return value
-        return None
-    if isinstance(row, (list, tuple)) and len(row) > fallback_index:
-        return row[fallback_index]
-    return None
-
-
-def _single_or_in_condition(column: str, values: list[str]) -> str:
-    if not values:
-        return ""
-    if len(values) == 1:
-        return f"{column} = '{values[0]}'"
-    csv = ",".join([f"'{value}'" for value in values])
-    return f"{column} IN ({csv})"
 
 def init_api_routes(app, base_path: str):
     """Initialize API routes with dependencies."""
@@ -155,7 +113,7 @@ def init_api_routes(app, base_path: str):
 
         executor = DatabaseExecutor(cfg.get("oracle_tns"))
         try:
-            count = _extract_count_value(executor.run_query(f"SELECT COUNT(*) AS CNT FROM ({sql})"))
+            count = extract_count_value(executor.run_query(f"SELECT COUNT(*) AS CNT FROM ({sql})"))
         finally:
             executor.close()
         return jsonify({"count": count, "sql": sql})
@@ -168,29 +126,14 @@ def init_api_routes(app, base_path: str):
         field = request.args.get("field", "").strip()
         
         # Map field names to column names
-        field_map = {
-            "job_title": "JOB_TITLE",
-            "employee_job_title": "JOB_TITLE",
-            "location": "LOCATION",
-            "bu_code": "BU_CODE", 
-            "company": "COMPANY",
-            "tree_branch": "TREE_BRANCH",
-            "department_id": "DEPARTMENT_ID",
-            "first_name": "FIRST_NAME",
-            "last_name": "LAST_NAME",
-            "username": "USERNAME",
-            "employee_id": "EMPLOYEE_ID",
-            "job_code": "JOB_CODE",
-        }
-        
-        if field not in field_map:
+        if field not in SEARCH_VALUE_COLUMNS:
             return jsonify({"error": "Invalid field"}), 400
             
-        column = field_map[field]
+        column = SEARCH_VALUE_COLUMNS[field]
         
         try:
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
-            sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE {column} IS NOT NULL AND status_code != 'T' ORDER BY {column}"
+            sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE {column} IS NOT NULL AND {ACTIVE_EMPLOYEE_FILTER} ORDER BY {column}"
             results = executor.run_query(sql)
             items = [row[0] if isinstance(row, (list, tuple)) else next(iter(row.values())) for row in results]
             executor.close()
@@ -209,34 +152,19 @@ def init_api_routes(app, base_path: str):
             return jsonify([])
             
         # Map field names to column names
-        field_map = {
-            "job_title": "JOB_TITLE",
-            "employee_job_title": "JOB_TITLE",
-            "location": "LOCATION",
-            "bu_code": "BU_CODE",
-            "company": "COMPANY", 
-            "tree_branch": "TREE_BRANCH",
-            "department_id": "DEPARTMENT_ID",
-            "first_name": "FIRST_NAME",
-            "last_name": "LAST_NAME",
-            "username": "USERNAME",
-            "employee_id": "EMPLOYEE_ID",
-            "job_code": "JOB_CODE",
-        }
-        
-        if field not in field_map:
+        if field not in SEARCH_VALUE_COLUMNS:
             return jsonify({"error": "Invalid field"}), 400
             
         try:
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
             if field == "job_title":
                 # Special case: search both JOB_CODE and JOB_TITLE
-                sql = f"SELECT DISTINCT JOB_CODE || ' - ' || JOB_TITLE as value FROM omsadm.employee_mv WHERE (UPPER(JOB_CODE) LIKE UPPER('%{query}%') OR UPPER(JOB_TITLE) LIKE UPPER('%{query}%')) AND status_code != 'T' ORDER BY value"
+                sql = f"SELECT DISTINCT JOB_CODE || ' - ' || JOB_TITLE as value FROM omsadm.employee_mv WHERE (UPPER(JOB_CODE) LIKE UPPER('%{query}%') OR UPPER(JOB_TITLE) LIKE UPPER('%{query}%')) AND {ACTIVE_EMPLOYEE_FILTER} ORDER BY value"
             elif field == "employee_job_title":
-                sql = f"SELECT DISTINCT JOB_TITLE as value FROM omsadm.employee_mv WHERE UPPER(JOB_TITLE) LIKE UPPER('%{query}%') AND JOB_TITLE IS NOT NULL AND status_code != 'T' ORDER BY value"
+                sql = f"SELECT DISTINCT JOB_TITLE as value FROM omsadm.employee_mv WHERE UPPER(JOB_TITLE) LIKE UPPER('%{query}%') AND JOB_TITLE IS NOT NULL AND {ACTIVE_EMPLOYEE_FILTER} ORDER BY value"
             else:
-                column = field_map[field]
-                sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE UPPER({column}) LIKE UPPER('%{query}%') AND status_code != 'T' ORDER BY {column}"
+                column = SEARCH_VALUE_COLUMNS[field]
+                sql = f"SELECT DISTINCT {column} FROM omsadm.employee_mv WHERE UPPER({column}) LIKE UPPER('%{query}%') AND {ACTIVE_EMPLOYEE_FILTER} ORDER BY {column}"
             
             results = executor.run_query(sql)
             items = []
@@ -266,20 +194,20 @@ def init_api_routes(app, base_path: str):
         if not (job_titles or locations or bu_codes or companies or tree_branches or department_ids):
             return jsonify([])
 
-        where_parts = ["status_code != 'T'"]
+        where_parts = [ACTIVE_EMPLOYEE_FILTER]
         if job_titles:
             job_codes = [value.split(" - ", 1)[0].strip() for value in job_titles]
-            where_parts.append(_single_or_in_condition("JOB_CODE", job_codes))
+            where_parts.append(single_or_in_condition("JOB_CODE", job_codes))
         if locations:
-            where_parts.append(_single_or_in_condition("LOCATION", locations))
+            where_parts.append(single_or_in_condition("LOCATION", locations))
         if bu_codes:
-            where_parts.append(_single_or_in_condition("BU_CODE", bu_codes))
+            where_parts.append(single_or_in_condition("BU_CODE", bu_codes))
         if companies:
-            where_parts.append(_single_or_in_condition("COMPANY", companies))
+            where_parts.append(single_or_in_condition("COMPANY", companies))
         if tree_branches:
-            where_parts.append(_single_or_in_condition("TREE_BRANCH", tree_branches))
+            where_parts.append(single_or_in_condition("TREE_BRANCH", tree_branches))
         if department_ids:
-            where_parts.append(_single_or_in_condition("DEPARTMENT_ID", department_ids))
+            where_parts.append(single_or_in_condition("DEPARTMENT_ID", department_ids))
 
         sql = f"""
         SELECT EMPLOYEE_ID, FIRST_NAME, LAST_NAME, USERNAME, JOB_TITLE
@@ -345,11 +273,11 @@ def init_api_routes(app, base_path: str):
                     results[key] = 0
                     continue
 
-                condition = _single_or_in_condition(column, values)
+                condition = single_or_in_condition(column, values)
                 sql = f"""
                 SELECT COUNT(*) AS CNT
                 FROM omsadm.employee_mv
-                WHERE status_code != 'T'
+                WHERE {ACTIVE_EMPLOYEE_FILTER}
                   AND {condition}
                 """
                 row = executor.run_query(sql)
@@ -375,7 +303,7 @@ def init_api_routes(app, base_path: str):
 
         try:
             executor = DatabaseExecutor(cfg.get("oracle_tns"))
-            sql = f"SELECT DISTINCT TREE_BRANCH FROM omsadm.employee_mv WHERE UPPER(TREE_BRANCH) LIKE UPPER('%{query}%') AND status_code != 'T' ORDER BY TREE_BRANCH"
+            sql = f"SELECT DISTINCT TREE_BRANCH FROM omsadm.employee_mv WHERE UPPER(TREE_BRANCH) LIKE UPPER('%{query}%') AND {ACTIVE_EMPLOYEE_FILTER} ORDER BY TREE_BRANCH"
             results = executor.run_query(sql)
             items = []
             for row in results[:20]:
@@ -425,7 +353,7 @@ def init_api_routes(app, base_path: str):
             # Count records
             count_sql = f"SELECT COUNT(*) FROM ({sql})"
             result = executor.run_query(count_sql)
-            count = _extract_count_value(result)
+            count = extract_count_value(result)
             executor.close()
 
             return jsonify({"count": count})
@@ -459,7 +387,7 @@ def init_api_routes(app, base_path: str):
 
             base_users_sql = f"SELECT DISTINCT USERNAME FROM ({sql})"
             count_sql = f"SELECT COUNT(*) AS CNT FROM ({base_users_sql})"
-            total_count = _extract_count_value(executor.run_query(count_sql))
+            total_count = extract_count_value(executor.run_query(count_sql))
 
             paged_sql = f"""
             SELECT base.USERNAME AS EMAIL,
@@ -477,10 +405,10 @@ def init_api_routes(app, base_path: str):
 
             rows = []
             for row in records:
-                email = str(_row_value(row, "EMAIL", 0) or "")
-                first = str(_row_value(row, "FIRST_NAME", 1) or "").strip()
-                last = str(_row_value(row, "LAST_NAME", 2) or "").strip()
-                title = str(_row_value(row, "JOB_TITLE", 3) or "").strip()
+                email = str(row_value(row, "EMAIL", 0) or "")
+                first = str(row_value(row, "FIRST_NAME", 1) or "").strip()
+                last = str(row_value(row, "LAST_NAME", 2) or "").strip()
+                title = str(row_value(row, "JOB_TITLE", 3) or "").strip()
                 full_name = " ".join(part for part in (first, last) if part).strip()
                 rows.append({
                     "email": email,

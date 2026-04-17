@@ -3,36 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from ..db import DatabaseExecutor
-
-
-EXPORTABLE_FIELDS: Dict[str, str] = {
-    "employee_id": "Employee ID",
-    "username": "Username",
-    "email": "Email",
-    "job_title": "Job Title",
-    "match_method": "Match Method",
-    "department_id": "Department ID",
-    "location": "Location",
-    "bu_code": "Business Unit",
-    "company": "Company",
-    "tree_branch": "Tree Branch",
-    "full_part_time": "Full/Part Time",
-}
-
-ADVANCED_SEARCH_COLUMNS: Dict[str, str] = {
-    "employee_id": "EMPLOYEE_ID",
-    "first_name": "FIRST_NAME",
-    "last_name": "LAST_NAME",
-    "username": "USERNAME",
-    "job_title": "JOB_TITLE",
-    "department_id": "DEPARTMENT_ID",
-    "location": "LOCATION",
-    "bu_code": "BU_CODE",
-    "company": "COMPANY",
-    "tree_branch": "TREE_BRANCH",
-    "full_part_time": "FULL_PART_TIME",
-    "job_code": "JOB_CODE",
-}
+from ..utils import ACTIVE_EMPLOYEE_FILTER, ADVANCED_SEARCH_COLUMNS, EXPORTABLE_FIELDS, serialize_employee_row
 
 
 def _sanitize(value: Optional[str]) -> str:
@@ -51,27 +22,22 @@ def _non_empty(value: Optional[str]) -> bool:
     return bool(str(value or "").strip())
 
 
-def _serialize_row(row: Any) -> Dict[str, Any]:
-    if isinstance(row, dict):
-        getter = lambda *keys: next((row.get(key) for key in keys if row.get(key) is not None), None)
-    else:
-        getter = lambda index, *_keys: row[index] if len(row) > index else None
-
-    return {
-        "id": getter("EMPLOYEE_ID", "employee_id") if isinstance(row, dict) else getter(0),
-        "first_name": getter("FIRST_NAME", "first_name") if isinstance(row, dict) else getter(1),
-        "last_name": getter("LAST_NAME", "last_name") if isinstance(row, dict) else getter(2),
-        "username": getter("USERNAME", "username") if isinstance(row, dict) else getter(3),
-        "email": getter("EMAIL", "email") if isinstance(row, dict) else getter(4),
-        "job_title": getter("JOB_TITLE", "job_title") if isinstance(row, dict) else getter(5),
-        "department_id": getter("DEPARTMENT_ID", "department_id") if isinstance(row, dict) else getter(6),
-        "location": getter("LOCATION", "location") if isinstance(row, dict) else getter(7),
-        "bu_code": getter("BU_CODE", "bu_code") if isinstance(row, dict) else getter(8),
-        "company": getter("COMPANY", "company") if isinstance(row, dict) else getter(9),
-        "tree_branch": getter("TREE_BRANCH", "tree_branch") if isinstance(row, dict) else getter(10),
-        "full_part_time": getter("FULL_PART_TIME", "full_part_time") if isinstance(row, dict) else getter(11),
-        "job_code": getter("JOB_CODE", "job_code") if isinstance(row, dict) else getter(12),
-    }
+EMPLOYEE_SEARCH_SELECT = """
+SELECT EMPLOYEE_ID,
+       FIRST_NAME,
+       LAST_NAME,
+       USERNAME,
+       EMAIL,
+       JOB_TITLE,
+       DEPARTMENT_ID,
+       LOCATION,
+       BU_CODE,
+       COMPANY,
+       TREE_BRANCH,
+       FULL_PART_TIME,
+       JOB_CODE
+FROM omsadm.employee_mv
+""".strip()
 
 
 class EmployeeLookupService:
@@ -79,6 +45,25 @@ class EmployeeLookupService:
 
     def __init__(self, oracle_tns: str):
         self.oracle_tns = oracle_tns
+
+    def _build_search_sql(self, conditions_sql: str, limit: Optional[int] = None) -> str:
+        limit_clause = f"\nFETCH FIRST {max(1, int(limit))} ROWS ONLY" if limit is not None else ""
+        return f"""
+        {EMPLOYEE_SEARCH_SELECT}
+        WHERE {ACTIVE_EMPLOYEE_FILTER}
+          AND ({conditions_sql})
+        ORDER BY FIRST_NAME, LAST_NAME, USERNAME{limit_clause}
+        """
+
+    def _run_search(self, conditions_sql: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        executor = DatabaseExecutor(self.oracle_tns)
+        try:
+            return [
+                serialize_employee_row(row)
+                for row in executor.run_query(self._build_search_sql(conditions_sql, limit))
+            ]
+        finally:
+            executor.close()
 
     def search_candidates_batch(
         self,
@@ -113,27 +98,8 @@ class EmployeeLookupService:
                     f"(UPPER(FIRST_NAME) = UPPER('{first}') AND UPPER(LAST_NAME) = UPPER('{last}'))"
                     for first, last in chunk
                 ]
-                sql = f"""
-                SELECT EMPLOYEE_ID,
-                       FIRST_NAME,
-                       LAST_NAME,
-                       USERNAME,
-                       EMAIL,
-                       JOB_TITLE,
-                       DEPARTMENT_ID,
-                       LOCATION,
-                       BU_CODE,
-                       COMPANY,
-                       TREE_BRANCH,
-                      FULL_PART_TIME,
-                      JOB_CODE
-                FROM omsadm.employee_mv
-                WHERE status_code != 'T'
-                  AND ({' OR '.join(conditions)})
-                ORDER BY FIRST_NAME, LAST_NAME, USERNAME
-                """
-                rows = executor.run_query(sql)
-                serialized = [_serialize_row(row) for row in rows]
+                rows = executor.run_query(self._build_search_sql(" OR ".join(conditions)))
+                serialized = [serialize_employee_row(row) for row in rows]
                 by_pair: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
                 for item in serialized:
                     pair_key = (
@@ -186,32 +152,7 @@ class EmployeeLookupService:
             if last:
                 conditions.append(f"UPPER(LAST_NAME) = UPPER('{last}')")
 
-        sql = f"""
-        SELECT EMPLOYEE_ID,
-               FIRST_NAME,
-               LAST_NAME,
-               USERNAME,
-               EMAIL,
-               JOB_TITLE,
-               DEPARTMENT_ID,
-               LOCATION,
-               BU_CODE,
-               COMPANY,
-               TREE_BRANCH,
-             FULL_PART_TIME,
-             JOB_CODE
-        FROM omsadm.employee_mv
-        WHERE status_code != 'T'
-          AND ({' OR '.join(conditions)})
-        ORDER BY FIRST_NAME, LAST_NAME, USERNAME
-        FETCH FIRST {max(1, int(limit))} ROWS ONLY
-        """
-
-        executor = DatabaseExecutor(self.oracle_tns)
-        try:
-            return [_serialize_row(row) for row in executor.run_query(sql)]
-        finally:
-            executor.close()
+        return self._run_search(" OR ".join(conditions), limit)
 
     def search_candidates(
         self,
@@ -247,32 +188,7 @@ class EmployeeLookupService:
         elif last:
             conditions.append(f"UPPER(LAST_NAME) LIKE UPPER('%{last}%')")
 
-        sql = f"""
-        SELECT EMPLOYEE_ID,
-               FIRST_NAME,
-               LAST_NAME,
-               USERNAME,
-               EMAIL,
-               JOB_TITLE,
-               DEPARTMENT_ID,
-               LOCATION,
-               BU_CODE,
-               COMPANY,
-               TREE_BRANCH,
-             FULL_PART_TIME,
-             JOB_CODE
-        FROM omsadm.employee_mv
-        WHERE status_code != 'T'
-          AND ({' OR '.join(conditions)})
-        ORDER BY FIRST_NAME, LAST_NAME, USERNAME
-        FETCH FIRST {max(1, int(limit))} ROWS ONLY
-        """
-
-        executor = DatabaseExecutor(self.oracle_tns)
-        try:
-            return [_serialize_row(row) for row in executor.run_query(sql)]
-        finally:
-            executor.close()
+        return self._run_search(" OR ".join(conditions), limit)
 
     def search_candidates_basic(
         self,
@@ -284,37 +200,13 @@ class EmployeeLookupService:
         if not search:
             return []
 
-        sql = f"""
-        SELECT EMPLOYEE_ID,
-               FIRST_NAME,
-               LAST_NAME,
-               USERNAME,
-               EMAIL,
-               JOB_TITLE,
-               DEPARTMENT_ID,
-               LOCATION,
-               BU_CODE,
-               COMPANY,
-               TREE_BRANCH,
-             FULL_PART_TIME,
-             JOB_CODE
-        FROM omsadm.employee_mv
-        WHERE status_code != 'T'
-          AND (
-            UPPER(FIRST_NAME) LIKE UPPER('%{search}%')
-            OR UPPER(LAST_NAME) LIKE UPPER('%{search}%')
-            OR UPPER(FIRST_NAME || ' ' || LAST_NAME) LIKE UPPER('%{search}%')
-            OR UPPER(USERNAME) LIKE UPPER('%{search}%')
-          )
-        ORDER BY FIRST_NAME, LAST_NAME, USERNAME
-        FETCH FIRST {max(1, int(limit))} ROWS ONLY
-        """
-
-        executor = DatabaseExecutor(self.oracle_tns)
-        try:
-            return [_serialize_row(row) for row in executor.run_query(sql)]
-        finally:
-            executor.close()
+        conditions = [
+            f"UPPER(FIRST_NAME) LIKE UPPER('%{search}%')",
+            f"UPPER(LAST_NAME) LIKE UPPER('%{search}%')",
+            f"UPPER(FIRST_NAME || ' ' || LAST_NAME) LIKE UPPER('%{search}%')",
+            f"UPPER(USERNAME) LIKE UPPER('%{search}%')",
+        ]
+        return self._run_search(" OR ".join(conditions), limit)
 
     def search_candidates_advanced(
         self,
@@ -336,29 +228,4 @@ class EmployeeLookupService:
         if not conditions:
             return []
 
-        sql = f"""
-        SELECT EMPLOYEE_ID,
-               FIRST_NAME,
-               LAST_NAME,
-               USERNAME,
-               EMAIL,
-               JOB_TITLE,
-               DEPARTMENT_ID,
-               LOCATION,
-               BU_CODE,
-               COMPANY,
-               TREE_BRANCH,
-             FULL_PART_TIME,
-             JOB_CODE
-        FROM omsadm.employee_mv
-        WHERE status_code != 'T'
-          AND ({' AND '.join(conditions)})
-        ORDER BY FIRST_NAME, LAST_NAME, USERNAME
-        FETCH FIRST {max(1, int(limit))} ROWS ONLY
-        """
-
-        executor = DatabaseExecutor(self.oracle_tns)
-        try:
-            return [_serialize_row(row) for row in executor.run_query(sql)]
-        finally:
-            executor.close()
+        return self._run_search(" AND ".join(conditions), limit)

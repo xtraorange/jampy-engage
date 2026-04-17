@@ -7,7 +7,7 @@ from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Sequence
 
 from ..db import DatabaseExecutor
-from .employee_lookup_service import EXPORTABLE_FIELDS
+from ..utils import ACTIVE_EMPLOYEE_FILTER, EXPORTABLE_FIELDS, label_for_column, row_value
 
 
 DEFAULT_EMPLOYEE_COLUMNS: List[str] = [
@@ -28,30 +28,6 @@ DEFAULT_EMPLOYEE_COLUMNS: List[str] = [
 ]
 
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
-_LABEL_OVERRIDES: Dict[str, str] = {
-    "EMPLOYEE_ID": "Employee ID",
-    "FIRST_NAME": "First Name",
-    "LAST_NAME": "Last Name",
-    "USERNAME": "Username",
-    "EMAIL": "Email",
-    "JOB_CODE": "Job Code",
-    "JOB_TITLE": "Job Title",
-    "DEPARTMENT_ID": "Department ID",
-    "LOCATION": "Location",
-    "BU_CODE": "Business Unit",
-    "COMPANY": "Company",
-    "TREE_BRANCH": "Tree Branch",
-    "FULL_PART_TIME": "Full/Part Time",
-    "STATUS_CODE": "Status Code",
-}
-
-
-def label_for_column(column_name: str) -> str:
-    """Return a user-facing label for a database column."""
-    column = str(column_name or "").strip().upper()
-    if column in _LABEL_OVERRIDES:
-        return _LABEL_OVERRIDES[column]
-    return column.replace("_", " ").title()
 
 
 def normalize_column_name(value: Any) -> str:
@@ -166,7 +142,7 @@ def build_custom_employee_sql(
     if not chosen_columns:
         raise ValueError("Select at least one output column.")
 
-    conditions = ["status_code != 'T'"]
+    conditions = [ACTIVE_EMPLOYEE_FILTER]
     for item in filters or []:
         column = normalize_column_name((item or {}).get("column"))
         if not column:
@@ -185,19 +161,6 @@ def build_custom_employee_sql(
         f"WHERE {' AND '.join(conditions)}"
         f"{order_sql}"
     )
-
-
-def row_value(row: Any, key: str, fallback_index: int = 0) -> Any:
-    """Read a value from a dict or tuple row."""
-    if isinstance(row, dict):
-        key_lower = key.lower()
-        for candidate, value in row.items():
-            if str(candidate).lower() == key_lower:
-                return value
-        return None
-    if isinstance(row, (list, tuple)) and len(row) > fallback_index:
-        return row[fallback_index]
-    return None
 
 
 def build_csv_buffer(headers: Sequence[Any], rows: Sequence[Sequence[Any]]) -> io.BytesIO:

@@ -13,9 +13,16 @@
 
 <script src="{{ url_for('static', filename='js/employee_search.js') }}"></script>
 
+<style>
+  .adhoc-people-search-card,
+  .adhoc-people-search-card .card-body {
+    overflow: visible;
+  }
+</style>
+
 <div class="row g-4">
   <div class="col-lg-5">
-    <div class="card h-100">
+    <div class="card h-100 adhoc-people-search-card">
       <div class="card-header">
         <h5 class="mb-0">Find People</h5>
         <small class="text-muted">Start typing to search by name/username, or use Advanced Search for any attribute.</small>
