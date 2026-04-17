@@ -134,39 +134,12 @@ window.EmployeeSearch = (function () {
     list.dataset.floatingAnchored = '1';
   }
 
-  function anchorFloatingSuggestions(input, list) {
-    if (!input || !list) return;
-    if (list.dataset.floatingAnchored === '1') return;
-
-    const host = input.closest('.input-group') || input.parentElement;
-    if (!host) return;
-
-    if (!host.contains(list)) {
-      host.appendChild(list);
-    }
-
-    try {
-      if (window.getComputedStyle(host).position === 'static') {
-        host.style.position = 'relative';
-      }
-    } catch (_) {}
-
-    list.style.position = 'absolute';
-    list.style.left = '0';
-    list.style.right = '0';
-    list.style.top = 'calc(100% + 0.35rem)';
-    list.style.zIndex = '45';
-    list.style.marginTop = '0';
-    list.dataset.floatingAnchored = '1';
-  }
-
   function bindTypeahead(config) {
     const input = document.getElementById(config.inputId);
     const list = document.getElementById(config.listId);
     if (!input || !list || typeof config.onPick !== 'function') return;
 
     const advancedButton = config.advancedButtonId ? document.getElementById(config.advancedButtonId) : null;
-    anchorFloatingSuggestions(input, list);
     anchorFloatingSuggestions(input, list);
 
     input.setAttribute('autocomplete', 'off');

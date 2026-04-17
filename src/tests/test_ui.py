@@ -10,6 +10,16 @@ import pytest
 import yaml
 
 from src.ui import create_app, _find_available_port
+from src.utils import (
+    ACTIVE_EMPLOYEE_FILTER,
+    SEARCH_VALUE_COLUMNS,
+    active_employee_filter,
+    extract_count_value,
+    label_for_column,
+    row_value,
+    serialize_employee_row,
+    single_or_in_condition,
+)
 
 
 @pytest.fixture
@@ -796,6 +806,29 @@ def test_employee_search_endpoints_basic_and_advanced(client, monkeypatch):
     assert rv.status_code == 200
     payload = rv.get_json()
     assert payload[0]["username"] == "dcole"
+
+
+def test_shared_sql_helpers():
+    assert ACTIVE_EMPLOYEE_FILTER == "status_code != 'T'"
+    assert active_employee_filter() == "status_code != 'T'"
+    assert active_employee_filter("cte") == "cte.status_code != 'T'"
+    assert single_or_in_condition("LOCATION", ["MN"]) == "LOCATION = 'MN'"
+    assert single_or_in_condition("LOCATION", ["MN", "WI"]) == "LOCATION IN ('MN','WI')"
+
+
+def test_shared_employee_field_helpers():
+    assert SEARCH_VALUE_COLUMNS["employee_job_title"] == "JOB_TITLE"
+    assert label_for_column("EMPLOYEE_ID") == "Employee ID"
+    assert label_for_column("custom_field") == "Custom Field"
+    assert serialize_employee_row({"EMPLOYEE_ID": "1001", "USERNAME": "ajones", "JOB_CODE": "J01"})["id"] == "1001"
+    assert serialize_employee_row(("1002", "Alex", "Smith", "asmith", "a@x", "Mgr", "D01", "MN", "BU1", "Fastenal", "Tree", "F", "J02"))["username"] == "asmith"
+
+
+def test_shared_db_row_helpers():
+    assert row_value({"EMAIL": "a@b.com"}, "email", 0) == "a@b.com"
+    assert row_value(("a@b.com",), "EMAIL", 0) == "a@b.com"
+    assert extract_count_value([{"CNT": "7"}]) == 7
+    assert extract_count_value([(9,)]) == 9
 
 
 def test_adhoc_custom_report_download(client, monkeypatch):

@@ -17,7 +17,8 @@ from ...services.adhoc_service import (
     objectid_rows_from_query_rows,
     people_csv_buffer,
 )
-from ...services.employee_lookup_service import EmployeeLookupService, EXPORTABLE_FIELDS
+from ...services.employee_lookup_service import EmployeeLookupService
+from ...utils import EXPORTABLE_FIELDS
 from ...services.group_service import GroupService
 from ...services.report_service import ReportService
 from ...services.stats_service import StatsService
