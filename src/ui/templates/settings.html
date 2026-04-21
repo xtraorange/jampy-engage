@@ -92,6 +92,39 @@
           </label>
           <input type="text" class="form-control" id="oracle_tns" name="oracle_tns" value="{{ config.oracle_tns }}" placeholder="e.g., MYDB or server:1521/MYDB">
         </div>
+
+        {% if config.get('db_environment') == 'sqlite' %}
+        <div class="border rounded p-3 mt-3" style="background: #f8fafc; border-color: var(--app-border) !important;">
+          <h6 class="mb-2">SQLite Demo/Dev/Test Controls</h6>
+          <p class="text-muted small mb-2">Use these tools to create a clean table, replace with fake records, inspect rows, and export/import snapshots.</p>
+          <div id="sqlite-status" class="text-muted small mb-3">
+            Database: {{ sqlite_status.db_path if sqlite_status else 'unknown' }}
+            | Exists: {{ 'Yes' if sqlite_status and sqlite_status.exists else 'No' }}
+            | Table: {{ 'Yes' if sqlite_status and sqlite_status.table_exists else 'No' }}
+            | Rows: {{ sqlite_status.row_count if sqlite_status else 0 }}
+          </div>
+
+          <div class="row g-2 align-items-end mb-2">
+            <div class="col-md-4">
+              <label for="sqlite-seed-count" class="form-label mb-1">Fake Record Count</label>
+              <input id="sqlite-seed-count" type="number" class="form-control" value="250" min="1" max="5000">
+            </div>
+            <div class="col-md-8 d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-outline-secondary" id="sqlite-refresh-status">Refresh Status</button>
+              <button type="button" class="btn btn-outline-warning" id="sqlite-create-empty">Create Empty Table</button>
+              <button type="button" class="btn btn-outline-primary" id="sqlite-replace-fake">Replace with Fake Records</button>
+            </div>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-primary" id="sqlite-open-viewer">View Table Data</button>
+            <a class="btn btn-outline-secondary" id="sqlite-export-snapshot" href="{{ url_for('api.sqlite_dev_export') }}">Export Snapshot (.sqlite3)</a>
+            <input type="file" id="sqlite-import-file" accept=".sqlite,.sqlite3,.db" class="form-control" style="max-width: 260px;">
+            <button type="button" class="btn btn-outline-secondary" id="sqlite-import-snapshot">Import Snapshot</button>
+          </div>
+          <div id="sqlite-dev-message" class="small mt-3"></div>
+        </div>
+        {% endif %}
         </div>
       </fieldset>
 
@@ -203,34 +236,43 @@
   <button type="submit" class="btn btn-primary mt-3">Save</button>
 </form>
 
-{% if config.get('db_environment') == 'sqlite' %}
-<div class="card mb-4">
-  <div class="card-header">
-    <h5 class="mb-0">SQLite Dev Controls</h5>
-    <small>Only available while Database Environment is set to SQLite demo/dev/test.</small>
-  </div>
-  <div class="card-body">
-    <div id="sqlite-status" class="text-muted small mb-3">
-      Database: {{ sqlite_status.db_path if sqlite_status else 'unknown' }}
-      | Exists: {{ 'Yes' if sqlite_status and sqlite_status.exists else 'No' }}
-      | Table: {{ 'Yes' if sqlite_status and sqlite_status.table_exists else 'No' }}
-      | Rows: {{ sqlite_status.row_count if sqlite_status else 0 }}
-    </div>
-    <div class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label for="sqlite-seed-count" class="form-label">Record Count</label>
-        <input id="sqlite-seed-count" type="number" class="form-control" value="250" min="1" max="5000">
+<div class="modal fade" id="sqliteViewerModal" tabindex="-1" aria-labelledby="sqliteViewerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sqliteViewerModalLabel">SQLite Table Viewer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="col-md-9 d-flex flex-wrap gap-2">
-        <button type="button" class="btn btn-outline-secondary" id="sqlite-refresh-status">Refresh Status</button>
-        <button type="button" class="btn btn-outline-warning" id="sqlite-create-reset">Create / Reset Table + Seed</button>
-        <button type="button" class="btn btn-outline-primary" id="sqlite-reseed">Rebuild with Count</button>
+      <div class="modal-body">
+        <div class="row g-2 align-items-end mb-3">
+          <div class="col-md-8">
+            <label for="sqlite-viewer-columns" class="form-label">Columns to show</label>
+            <select id="sqlite-viewer-columns" class="form-select" multiple size="6"></select>
+            <small class="text-muted">Hold Ctrl/Cmd to select multiple columns.</small>
+          </div>
+          <div class="col-md-2">
+            <label for="sqlite-viewer-limit" class="form-label">Rows</label>
+            <input id="sqlite-viewer-limit" type="number" class="form-control" min="1" max="200" value="50">
+          </div>
+          <div class="col-md-2 d-grid">
+            <button type="button" class="btn btn-primary" id="sqlite-viewer-load">Load Rows</button>
+          </div>
+        </div>
+
+        <div id="sqlite-viewer-meta" class="small text-muted mb-2"></div>
+        <div class="table-responsive" style="max-height: 55vh;">
+          <table class="table table-sm table-striped align-middle" id="sqlite-viewer-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
-    <div id="sqlite-dev-message" class="small mt-3"></div>
   </div>
 </div>
-{% endif %}
 
 <script>
   // Initialize Bootstrap tooltips if available
@@ -272,6 +314,11 @@
   const sqliteStatusEl = document.getElementById('sqlite-status');
   const sqliteMsgEl = document.getElementById('sqlite-dev-message');
   const sqliteSeedCountEl = document.getElementById('sqlite-seed-count');
+  const sqliteViewerColumnsEl = document.getElementById('sqlite-viewer-columns');
+  const sqliteViewerLimitEl = document.getElementById('sqlite-viewer-limit');
+  const sqliteViewerMetaEl = document.getElementById('sqlite-viewer-meta');
+  const sqliteViewerTableHead = document.querySelector('#sqlite-viewer-table thead');
+  const sqliteViewerTableBody = document.querySelector('#sqlite-viewer-table tbody');
 
   function setSqliteMessage(text, isError = false) {
     if (!sqliteMsgEl) return;
@@ -290,7 +337,7 @@
     sqliteStatusEl.textContent = `Database: ${data.db_path} | Exists: ${data.exists ? 'Yes' : 'No'} | Table: ${data.table_exists ? 'Yes' : 'No'} | Rows: ${data.row_count}`;
   }
 
-  async function postSqliteAction(url, payload) {
+  async function postSqliteJson(url, payload) {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -301,7 +348,67 @@
       throw new Error(data.error || 'SQLite action failed.');
     }
     await refreshSqliteStatus();
-    setSqliteMessage(`Success. Seeded ${data.seeded || 0} records.`);
+    return data;
+  }
+
+  function selectedViewerColumns() {
+    if (!sqliteViewerColumnsEl) return [];
+    return Array.from(sqliteViewerColumnsEl.selectedOptions || []).map(opt => opt.value);
+  }
+
+  async function loadViewerColumns() {
+    if (!sqliteViewerColumnsEl) return;
+    const response = await fetch('/api/dev/sqlite-columns');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Unable to load columns.');
+
+    sqliteViewerColumnsEl.innerHTML = '';
+    (data.columns || []).forEach((col, idx) => {
+      const option = document.createElement('option');
+      option.value = col;
+      option.textContent = col;
+      if (idx < 12) option.selected = true;
+      sqliteViewerColumnsEl.appendChild(option);
+    });
+  }
+
+  function renderViewerTable(payload) {
+    const cols = payload.columns || [];
+    const rows = payload.rows || [];
+
+    sqliteViewerTableHead.innerHTML = '';
+    sqliteViewerTableBody.innerHTML = '';
+
+    const headRow = document.createElement('tr');
+    cols.forEach(col => {
+      const th = document.createElement('th');
+      th.textContent = col;
+      headRow.appendChild(th);
+    });
+    sqliteViewerTableHead.appendChild(headRow);
+
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      row.forEach(value => {
+        const td = document.createElement('td');
+        td.textContent = value == null ? '' : String(value);
+        tr.appendChild(td);
+      });
+      sqliteViewerTableBody.appendChild(tr);
+    });
+
+    sqliteViewerMetaEl.textContent = `Showing ${rows.length} row(s) | Total rows: ${payload.total_rows || 0}`;
+  }
+
+  async function loadViewerRows() {
+    const limit = parseInt(sqliteViewerLimitEl?.value || '50', 10);
+    const params = new URLSearchParams();
+    params.set('limit', String(Number.isFinite(limit) ? limit : 50));
+    selectedViewerColumns().forEach(col => params.append('columns', col));
+    const response = await fetch(`/api/dev/sqlite-preview?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Unable to load preview rows.');
+    renderViewerTable(data);
   }
 
   document.getElementById('sqlite-refresh-status')?.addEventListener('click', async () => {
@@ -313,19 +420,62 @@
     }
   });
 
-  document.getElementById('sqlite-create-reset')?.addEventListener('click', async () => {
+  document.getElementById('sqlite-create-empty')?.addEventListener('click', async () => {
     try {
-      const count = parseInt(sqliteSeedCountEl?.value || '250', 10);
-      await postSqliteAction('/api/dev/sqlite-reset', { count: Number.isFinite(count) ? count : 250 });
+      const data = await postSqliteJson('/api/dev/sqlite-create-empty', {});
+      setSqliteMessage(`Created empty table successfully. Current rows: ${data.row_count || 0}.`);
     } catch (err) {
       setSqliteMessage(err.message || String(err), true);
     }
   });
 
-  document.getElementById('sqlite-reseed')?.addEventListener('click', async () => {
+  document.getElementById('sqlite-replace-fake')?.addEventListener('click', async () => {
     try {
       const count = parseInt(sqliteSeedCountEl?.value || '250', 10);
-      await postSqliteAction('/api/dev/sqlite-seed', { count: Number.isFinite(count) ? count : 250 });
+      const data = await postSqliteJson('/api/dev/sqlite-seed', { count: Number.isFinite(count) ? count : 250 });
+      setSqliteMessage(`Replaced table with ${data.seeded || 0} fake records.`);
+    } catch (err) {
+      setSqliteMessage(err.message || String(err), true);
+    }
+  });
+
+  document.getElementById('sqlite-open-viewer')?.addEventListener('click', async () => {
+    try {
+      await loadViewerColumns();
+      await loadViewerRows();
+      if (typeof bootstrap !== 'undefined') {
+        const modal = new bootstrap.Modal(document.getElementById('sqliteViewerModal'));
+        modal.show();
+      }
+    } catch (err) {
+      setSqliteMessage(err.message || String(err), true);
+    }
+  });
+
+  document.getElementById('sqlite-viewer-load')?.addEventListener('click', async () => {
+    try {
+      await loadViewerRows();
+    } catch (err) {
+      setSqliteMessage(err.message || String(err), true);
+    }
+  });
+
+  document.getElementById('sqlite-import-snapshot')?.addEventListener('click', async () => {
+    try {
+      const fileInput = document.getElementById('sqlite-import-file');
+      if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        throw new Error('Choose a snapshot file first.');
+      }
+      const form = new FormData();
+      form.append('snapshot', fileInput.files[0]);
+      const response = await fetch('/api/dev/sqlite-import', {
+        method: 'POST',
+        body: form,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Snapshot import failed.');
+      await refreshSqliteStatus();
+      setSqliteMessage(`Imported snapshot successfully. Current rows: ${data.row_count || 0}.`);
     } catch (err) {
       setSqliteMessage(err.message || String(err), true);
     }

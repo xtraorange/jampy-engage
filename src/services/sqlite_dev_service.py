@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import random
+import shutil
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -163,7 +164,8 @@ def _table_columns(conn: sqlite3.Connection) -> List[str]:
 
 def create_or_reset_sqlite_db(base_path: str, db_path: str) -> None:
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    schema_sql = open(_schema_path(base_path), "r", encoding="utf-8").read()
+    with open(_schema_path(base_path), "r", encoding="utf-8") as schema_file:
+        schema_sql = schema_file.read()
     with sqlite3.connect(db_path) as conn:
         conn.executescript(schema_sql)
         conn.commit()
@@ -215,6 +217,78 @@ def sqlite_status(base_path: str, db_path: str) -> Dict[str, Any]:
             return status
 
         status["table_exists"] = True
+        status["columns"] = _table_columns(conn)
         count_row = conn.execute("SELECT COUNT(*) FROM employee_mv").fetchone()
         status["row_count"] = int(count_row[0] if count_row else 0)
     return status
+
+
+def sqlite_columns(db_path: str) -> List[str]:
+    if not os.path.exists(db_path):
+        return []
+    with sqlite3.connect(db_path) as conn:
+        table_row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='employee_mv'"
+        ).fetchone()
+        if not table_row:
+            return []
+        return _table_columns(conn)
+
+
+def sqlite_preview_rows(
+    db_path: str,
+    selected_columns: Optional[List[str]] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    cols = sqlite_columns(db_path)
+    if not cols:
+        return {
+            "columns": [],
+            "rows": [],
+            "total_rows": 0,
+            "limit": 0,
+            "offset": 0,
+        }
+
+    allowed = set(cols)
+    chosen = [c for c in (selected_columns or []) if c in allowed]
+    if not chosen:
+        chosen = cols[:12]
+
+    safe_limit = max(1, min(int(limit or 50), 200))
+    safe_offset = max(0, int(offset or 0))
+
+    quoted = ", ".join([f'"{c}"' for c in chosen])
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        total_row = conn.execute("SELECT COUNT(*) AS CNT FROM employee_mv").fetchone()
+        total_count = int(total_row["CNT"] if total_row else 0)
+        data = conn.execute(
+            f"SELECT {quoted} FROM employee_mv ORDER BY LAST_NAME, FIRST_NAME, EMPLOYEE_ID LIMIT ? OFFSET ?",
+            (safe_limit, safe_offset),
+        ).fetchall()
+
+    return {
+        "columns": chosen,
+        "rows": [[row[c] for c in chosen] for row in data],
+        "total_rows": total_count,
+        "limit": safe_limit,
+        "offset": safe_offset,
+    }
+
+
+def import_sqlite_snapshot(base_path: str, db_path: str, incoming_path: str) -> None:
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    tmp_path = db_path + ".importing"
+    shutil.copyfile(incoming_path, tmp_path)
+
+    # Validate expected table exists before replacing active DB.
+    with sqlite3.connect(tmp_path) as conn:
+        row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='employee_mv'"
+        ).fetchone()
+        if not row:
+            raise ValueError("Snapshot file is missing employee_mv table.")
+
+    os.replace(tmp_path, db_path)

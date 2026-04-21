@@ -1,7 +1,8 @@
 """API routes for AJAX calls."""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 import os
 import sys
+import tempfile
 from datetime import datetime
 
 from ...services.config_service import ConfigService
@@ -13,8 +14,11 @@ from ...services.adhoc_service import (
 from ...services.employee_lookup_service import EmployeeLookupService
 from ...services.sqlite_dev_service import (
     create_or_reset_sqlite_db,
+    import_sqlite_snapshot,
     seed_sqlite_db,
+    sqlite_columns,
     sqlite_db_path_from_config,
+    sqlite_preview_rows,
     sqlite_status,
 )
 from ...sql_builder import generate_safe_hierarchy_sql
@@ -60,6 +64,17 @@ def init_api_routes(app, base_path: str):
         info = sqlite_status(base_path, path)
         return jsonify({"ok": True, "seeded": seeded, **info})
 
+    @api_bp.route("/api/dev/sqlite-create-empty", methods=["POST"])
+    def sqlite_dev_create_empty():
+        cfg, error_response, status_code = _sqlite_guard_config()
+        if error_response is not None:
+            return error_response, status_code
+
+        path = sqlite_db_path_from_config(base_path, cfg)
+        create_or_reset_sqlite_db(base_path, path)
+        info = sqlite_status(base_path, path)
+        return jsonify({"ok": True, "seeded": 0, **info})
+
     @api_bp.route("/api/dev/sqlite-seed", methods=["POST"])
     def sqlite_dev_seed():
         cfg, error_response, status_code = _sqlite_guard_config()
@@ -74,6 +89,68 @@ def init_api_routes(app, base_path: str):
         seeded = seed_sqlite_db(base_path, path, count=count)
         info = sqlite_status(base_path, path)
         return jsonify({"ok": True, "seeded": seeded, **info})
+
+    @api_bp.route("/api/dev/sqlite-columns", methods=["GET"])
+    def sqlite_dev_columns():
+        cfg = config_service.load_general_config()
+        path = sqlite_db_path_from_config(base_path, cfg)
+        return jsonify({"columns": sqlite_columns(path)})
+
+    @api_bp.route("/api/dev/sqlite-preview", methods=["GET"])
+    def sqlite_dev_preview():
+        cfg = config_service.load_general_config()
+        path = sqlite_db_path_from_config(base_path, cfg)
+        raw_columns = request.args.getlist("columns")
+        if len(raw_columns) == 1 and "," in raw_columns[0]:
+            raw_columns = [part.strip() for part in raw_columns[0].split(",") if part.strip()]
+        try:
+            limit = int(request.args.get("limit", 50))
+        except (TypeError, ValueError):
+            limit = 50
+        try:
+            offset = int(request.args.get("offset", 0))
+        except (TypeError, ValueError):
+            offset = 0
+        payload = sqlite_preview_rows(path, selected_columns=raw_columns, limit=limit, offset=offset)
+        return jsonify(payload)
+
+    @api_bp.route("/api/dev/sqlite-export", methods=["GET"])
+    def sqlite_dev_export():
+        cfg = config_service.load_general_config()
+        path = sqlite_db_path_from_config(base_path, cfg)
+        if not os.path.exists(path):
+            return jsonify({"error": "SQLite database file does not exist yet."}), 404
+
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"sqlite_snapshot_{stamp}.sqlite3"
+        return send_file(path, as_attachment=True, download_name=filename)
+
+    @api_bp.route("/api/dev/sqlite-import", methods=["POST"])
+    def sqlite_dev_import():
+        cfg, error_response, status_code = _sqlite_guard_config()
+        if error_response is not None:
+            return error_response, status_code
+
+        upload = request.files.get("snapshot")
+        if upload is None or not upload.filename:
+            return jsonify({"error": "Please choose a .sqlite3 snapshot file."}), 400
+
+        path = sqlite_db_path_from_config(base_path, cfg)
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".sqlite3")
+        temp_file.close()
+        try:
+            upload.save(temp_file.name)
+            import_sqlite_snapshot(base_path, path, temp_file.name)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        finally:
+            try:
+                os.remove(temp_file.name)
+            except OSError:
+                pass
+
+        info = sqlite_status(base_path, path)
+        return jsonify({"ok": True, **info})
 
     @api_bp.route("/api/search-employees", methods=["GET"])
     def search_employees():
