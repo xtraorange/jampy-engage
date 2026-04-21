@@ -50,6 +50,31 @@ _OFFSET_FETCH_RE = re.compile(
     r"OFFSET\s+(\d+)\s+ROWS\s+FETCH\s+NEXT\s+(\d+)\s+ROWS\s+ONLY",
     re.IGNORECASE,
 )
+_CONNECT_BLOCK_RE = re.compile(
+    r"""
+SELECT\s+EMPLOYEE_ID\s*,\s*USERNAME\s*,\s*JOB_CODE\s*,\s*DEPARTMENT_ID\s*,\s*BU_CODE\s*,\s*
+LOCATION\s*,\s*COMPANY\s*,\s*TREE_BRANCH\s*,\s*FULL_PART_TIME\s*,\s*LEVEL\s+AS\s+HIER_LEVEL\s*
+FROM\s+employee_mv\s*
+START\s+WITH\s*(?P<start>.*?)\s*
+CONNECT\s+BY\s+PRIOR\s+EMPLOYEE_ID\s*=\s*SUPERVISOR_ID\s*
+AND\s*(?P<cond>.*?)(?=(?:\n\s*UNION\s+ALL|\)\s*cte|\)\s*merged|$))
+""",
+    re.IGNORECASE | re.DOTALL | re.VERBOSE,
+)
+
+_QUALIFIABLE_COLUMNS = [
+    "STATUS_CODE",
+    "USERNAME",
+    "EMPLOYEE_ID",
+    "JOB_CODE",
+    "DEPARTMENT_ID",
+    "BU_CODE",
+    "LOCATION",
+    "COMPANY",
+    "TREE_BRANCH",
+    "FULL_PART_TIME",
+    "SUPERVISOR_ID",
+]
 
 
 def _runtime_db_config() -> Dict[str, Any]:
@@ -71,9 +96,58 @@ def _sqlite_db_path_from_config(config: Dict[str, Any]) -> str:
     return os.path.join(os.getcwd(), "temp", "demo_dev_test.sqlite3")
 
 
+def _qualify_recursive_condition(cond: str) -> str:
+    rewritten = str(cond or "")
+    for column in _QUALIFIABLE_COLUMNS:
+        rewritten = re.sub(
+            rf"(?<![\.\w]){column}(?![\w])",
+            f"e.{column}",
+            rewritten,
+            flags=re.IGNORECASE,
+        )
+    return rewritten
+
+
+def _translate_connect_by_blocks(query: str) -> str:
+    ctes: List[str] = []
+    counter = 0
+
+    def _replace(match: re.Match) -> str:
+        nonlocal counter
+        counter += 1
+        cte_name = f"h{counter}"
+        start_clause = str(match.group("start") or "").strip()
+        cond_clause = _qualify_recursive_condition(str(match.group("cond") or "").strip())
+
+        ctes.append(
+            f"""{cte_name}(EMPLOYEE_ID, USERNAME, JOB_CODE, DEPARTMENT_ID, BU_CODE, LOCATION, COMPANY, TREE_BRANCH, FULL_PART_TIME, HIER_LEVEL) AS (
+    SELECT EMPLOYEE_ID, USERNAME, JOB_CODE, DEPARTMENT_ID, BU_CODE, LOCATION, COMPANY, TREE_BRANCH, FULL_PART_TIME, 1 AS HIER_LEVEL
+    FROM employee_mv
+    WHERE {start_clause}
+    UNION ALL
+    SELECT e.EMPLOYEE_ID, e.USERNAME, e.JOB_CODE, e.DEPARTMENT_ID, e.BU_CODE, e.LOCATION, e.COMPANY, e.TREE_BRANCH, e.FULL_PART_TIME, p.HIER_LEVEL + 1 AS HIER_LEVEL
+    FROM employee_mv e
+    JOIN {cte_name} p ON e.SUPERVISOR_ID = p.EMPLOYEE_ID
+    WHERE {cond_clause}
+)"""
+        )
+
+        return (
+            "SELECT EMPLOYEE_ID, USERNAME, JOB_CODE, DEPARTMENT_ID, BU_CODE, LOCATION, "
+            f"COMPANY, TREE_BRANCH, FULL_PART_TIME, HIER_LEVEL FROM {cte_name}"
+        )
+
+    rewritten = _CONNECT_BLOCK_RE.sub(_replace, query)
+    if not ctes:
+        return rewritten
+
+    return "WITH RECURSIVE\n" + ",\n".join(ctes) + "\n" + rewritten
+
+
 def _translate_oracle_sql_for_sqlite(query: str) -> str:
     translated = str(query or "")
     translated = re.sub(r"\bomsadm\.employee_mv\b", "employee_mv", translated, flags=re.IGNORECASE)
+    translated = _translate_connect_by_blocks(translated)
     translated = re.sub(r"\bNVL\s*\(", "COALESCE(", translated, flags=re.IGNORECASE)
     translated = _OFFSET_FETCH_RE.sub(lambda m: f"LIMIT {m.group(2)} OFFSET {m.group(1)}", translated)
     translated = _FETCH_FIRST_RE.sub(lambda m: f"LIMIT {m.group(1)}", translated)

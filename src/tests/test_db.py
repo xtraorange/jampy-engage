@@ -27,6 +27,10 @@ def test_executor(monkeypatch, tmp_path):
     # patch jampy_db.create to return dummy client
     import jampy_db
 
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config" / "general.yaml").write_text("db_environment: oracle\n", encoding="utf-8")
+
     monkeypatch.setattr(jampy_db, "create", lambda profile, **props: DummyClient())
     execu = DatabaseExecutor("dummy")
     rows = execu.run_query("select 1")
