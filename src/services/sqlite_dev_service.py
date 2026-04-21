@@ -43,6 +43,23 @@ COMPANIES = ["PUR", "OPS", "SAL", "IT"]
 TREE_BRANCHES = ["CORPORATE", "NORTH_AMERICA", "EUROPE", "ASIA"]
 FTE_VALUES = ["F", "P"]
 
+PREFERRED_VIEW_COLUMNS = [
+    "EMPLOYEE_ID",
+    "FIRST_NAME",
+    "LAST_NAME",
+    "USERNAME",
+    "EMAIL",
+    "SUPERVISOR_ID",
+    "SUPERVISOR_NAME",
+    "JOB_TITLE",
+    "JOB_CODE",
+    "DEPARTMENT_ID",
+    "LOCATION",
+    "BU_CODE",
+    "COMPANY",
+    "TREE_BRANCH",
+]
+
 
 def _schema_path(base_path: str) -> str:
     return os.path.join(base_path, "src", "data", "employee_mv_schema.sql")
@@ -104,7 +121,8 @@ def generate_fake_employee_record(
     preferred_name = f"{first_name} {last_name}"
     formal_cn = f"CN={preferred_name},OU=Accounts,OU=Resources,DC=example,DC=local"
 
-    has_supervisor = bool(supervisors) and idx > 8
+    # Keep a realistic mix: many employees have supervisors, some are top-level.
+    has_supervisor = bool(supervisors) and idx > 3 and rng.random() < 0.72
     supervisor = rng.choice(supervisors) if has_supervisor else None
 
     status = "A" if rng.random() > 0.05 else "T"
@@ -254,7 +272,8 @@ def sqlite_preview_rows(
     allowed = set(cols)
     chosen = [c for c in (selected_columns or []) if c in allowed]
     if not chosen:
-        chosen = cols[:12]
+        preferred = [c for c in PREFERRED_VIEW_COLUMNS if c in allowed]
+        chosen = preferred or cols[:12]
 
     safe_limit = max(1, min(int(limit or 50), 200))
     safe_offset = max(0, int(offset or 0))

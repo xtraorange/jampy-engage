@@ -933,24 +933,6 @@
       list.style.marginTop = '0';
     }
 
-    const host = input.closest('.input-group') || input.parentElement;
-    if (host) {
-      if (!host.contains(list)) {
-        host.appendChild(list);
-      }
-      try {
-        if (window.getComputedStyle(host).position === 'static') {
-          host.style.position = 'relative';
-        }
-      } catch (_) {}
-      list.style.position = 'absolute';
-      list.style.left = '0';
-      list.style.right = '0';
-      list.style.top = 'calc(100% + 0.35rem)';
-      list.style.zIndex = '45';
-      list.style.marginTop = '0';
-    }
-
     input.setAttribute('autocomplete', 'off');
     input.setAttribute('autocapitalize', 'off');
     input.setAttribute('autocorrect', 'off');

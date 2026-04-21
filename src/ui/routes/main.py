@@ -791,9 +791,14 @@ def init_main_routes(app, base_path: str):
                 stats_service.reset_stats()
                 return redirect(url_for("main.settings"))
 
+            if request.form.get("toggle_db_environment") == "1":
+                next_environment = str(request.form.get("next_db_environment") or "oracle").strip().lower()
+                cfg["db_environment"] = "sqlite" if next_environment == "sqlite" else "oracle"
+                config_service.save_general_config(cfg)
+                return redirect(url_for("main.settings"))
+
             # Update general config based on form fields
             for key in [
-                "db_environment",
                 "sqlite_db_path",
                 "oracle_tns",
                 "ui_port",

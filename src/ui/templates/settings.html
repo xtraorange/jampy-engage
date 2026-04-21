@@ -69,14 +69,23 @@
         </legend>
         <div class="field-padded">
         <div class="mb-3">
-          <label for="db_environment" class="form-label">
+          <label class="form-label">
             Database Environment
             <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Choose Oracle production mode or the local SQLite demo/dev/test mode.">?</span>
           </label>
-          <select class="form-select" id="db_environment" name="db_environment">
-            <option value="oracle" {% if config.get('db_environment', 'oracle') == 'oracle' %}selected{% endif %}>Oracle (default)</option>
-            <option value="sqlite" {% if config.get('db_environment') == 'sqlite' %}selected{% endif %}>SQLite demo/dev/test</option>
-          </select>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge {% if config.get('db_environment', 'oracle') == 'sqlite' %}bg-warning text-dark{% else %}bg-primary{% endif %} px-3 py-2">
+              Current: {{ 'SQLite Demo/Dev/Test' if config.get('db_environment') == 'sqlite' else 'Oracle' }}
+            </span>
+            <form method="post" class="m-0">
+              <input type="hidden" name="toggle_db_environment" value="1">
+              <input type="hidden" name="next_db_environment" value="{{ 'oracle' if config.get('db_environment') == 'sqlite' else 'sqlite' }}">
+              <button type="submit" class="btn btn-outline-primary">
+                Switch To {{ 'Oracle' if config.get('db_environment') == 'sqlite' else 'SQLite Demo/Dev/Test' }}
+              </button>
+            </form>
+          </div>
+          <div class="form-text">This toggle saves immediately and refreshes the settings view for the selected environment.</div>
         </div>
         <div class="mb-3">
           <label for="sqlite_db_path" class="form-label">
@@ -104,23 +113,37 @@
             | Rows: {{ sqlite_status.row_count if sqlite_status else 0 }}
           </div>
 
-          <div class="row g-2 align-items-end mb-2">
-            <div class="col-md-4">
-              <label for="sqlite-seed-count" class="form-label mb-1">Fake Record Count</label>
-              <input id="sqlite-seed-count" type="number" class="form-control" value="250" min="1" max="5000">
+          <div class="row g-3">
+            <div class="col-lg-4">
+              <div class="border rounded p-2 h-100" style="background:#fff; border-color: var(--app-border) !important;">
+                <div class="small fw-semibold text-muted mb-2">Setup</div>
+                <div class="d-grid gap-2">
+                  <button type="button" class="btn btn-outline-primary" id="sqlite-create-empty">Create Empty Table</button>
+                  <button type="button" class="btn btn-outline-primary" id="sqlite-replace-fake">Replace with Fake Records</button>
+                </div>
+              </div>
             </div>
-            <div class="col-md-8 d-flex flex-wrap gap-2">
-              <button type="button" class="btn btn-outline-secondary" id="sqlite-refresh-status">Refresh Status</button>
-              <button type="button" class="btn btn-outline-warning" id="sqlite-create-empty">Create Empty Table</button>
-              <button type="button" class="btn btn-outline-primary" id="sqlite-replace-fake">Replace with Fake Records</button>
-            </div>
-          </div>
 
-          <div class="d-flex flex-wrap gap-2">
-            <button type="button" class="btn btn-outline-primary" id="sqlite-open-viewer">View Table Data</button>
-            <a class="btn btn-outline-secondary" id="sqlite-export-snapshot" href="{{ url_for('api.sqlite_dev_export') }}">Export Snapshot (.sqlite3)</a>
-            <input type="file" id="sqlite-import-file" accept=".sqlite,.sqlite3,.db" class="form-control" style="max-width: 260px;">
-            <button type="button" class="btn btn-outline-secondary" id="sqlite-import-snapshot">Import Snapshot</button>
+            <div class="col-lg-4">
+              <div class="border rounded p-2 h-100" style="background:#fff; border-color: var(--app-border) !important;">
+                <div class="small fw-semibold text-muted mb-2">Inspect</div>
+                <div class="d-grid gap-2">
+                  <button type="button" class="btn btn-outline-primary" id="sqlite-refresh-status">Refresh Status</button>
+                  <button type="button" class="btn btn-outline-primary" id="sqlite-open-viewer">View Table Data</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-4">
+              <div class="border rounded p-2 h-100" style="background:#fff; border-color: var(--app-border) !important;">
+                <div class="small fw-semibold text-muted mb-2">Snapshots</div>
+                <div class="d-grid gap-2 mb-2">
+                  <a class="btn btn-outline-primary" id="sqlite-export-snapshot" href="{{ url_for('api.sqlite_dev_export') }}">Export Snapshot</a>
+                  <button type="button" class="btn btn-outline-primary" id="sqlite-open-import-modal">Import Snapshot</button>
+                </div>
+                <div class="small text-muted">Use export/import to save and restore exact SQLite datasets.</div>
+              </div>
+            </div>
           </div>
           <div id="sqlite-dev-message" class="small mt-3"></div>
         </div>
@@ -274,6 +297,44 @@
   </div>
 </div>
 
+<div class="modal fade" id="sqliteSeedModal" tabindex="-1" aria-labelledby="sqliteSeedModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sqliteSeedModalLabel">Replace with Fake Records</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="sqlite-seed-count-modal" class="form-label">How many fake records should be created?</label>
+        <input id="sqlite-seed-count-modal" type="number" class="form-control" value="250" min="1" max="5000">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="sqlite-seed-run">Replace Records</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="sqliteImportModal" tabindex="-1" aria-labelledby="sqliteImportModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sqliteImportModalLabel">Import Snapshot</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label for="sqlite-import-file" class="form-label">Choose snapshot file</label>
+        <input type="file" id="sqlite-import-file" accept=".sqlite,.sqlite3,.db" class="form-control">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="sqlite-import-snapshot">Import Snapshot</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   // Initialize Bootstrap tooltips if available
   if (typeof bootstrap !== 'undefined') {
@@ -313,12 +374,28 @@
 
   const sqliteStatusEl = document.getElementById('sqlite-status');
   const sqliteMsgEl = document.getElementById('sqlite-dev-message');
-  const sqliteSeedCountEl = document.getElementById('sqlite-seed-count');
+  const sqliteSeedCountModalEl = document.getElementById('sqlite-seed-count-modal');
   const sqliteViewerColumnsEl = document.getElementById('sqlite-viewer-columns');
   const sqliteViewerLimitEl = document.getElementById('sqlite-viewer-limit');
   const sqliteViewerMetaEl = document.getElementById('sqlite-viewer-meta');
   const sqliteViewerTableHead = document.querySelector('#sqlite-viewer-table thead');
   const sqliteViewerTableBody = document.querySelector('#sqlite-viewer-table tbody');
+  const preferredViewerColumns = [
+    'EMPLOYEE_ID',
+    'FIRST_NAME',
+    'LAST_NAME',
+    'USERNAME',
+    'EMAIL',
+    'SUPERVISOR_ID',
+    'SUPERVISOR_NAME',
+    'JOB_TITLE',
+    'JOB_CODE',
+    'DEPARTMENT_ID',
+    'LOCATION',
+    'BU_CODE',
+    'COMPANY',
+    'TREE_BRANCH'
+  ];
 
   function setSqliteMessage(text, isError = false) {
     if (!sqliteMsgEl) return;
@@ -363,13 +440,17 @@
     if (!response.ok) throw new Error(data.error || 'Unable to load columns.');
 
     sqliteViewerColumnsEl.innerHTML = '';
-    (data.columns || []).forEach((col, idx) => {
+    (data.columns || []).forEach((col) => {
       const option = document.createElement('option');
       option.value = col;
       option.textContent = col;
-      if (idx < 12) option.selected = true;
+      if (preferredViewerColumns.includes(col)) option.selected = true;
       sqliteViewerColumnsEl.appendChild(option);
     });
+
+    if (selectedViewerColumns().length === 0 && sqliteViewerColumnsEl.options.length > 0) {
+      sqliteViewerColumnsEl.options[0].selected = true;
+    }
   }
 
   function renderViewerTable(payload) {
@@ -430,10 +511,22 @@
   });
 
   document.getElementById('sqlite-replace-fake')?.addEventListener('click', async () => {
+    if (typeof bootstrap !== 'undefined') {
+      const modal = new bootstrap.Modal(document.getElementById('sqliteSeedModal'));
+      modal.show();
+    }
+  });
+
+  document.getElementById('sqlite-seed-run')?.addEventListener('click', async () => {
     try {
-      const count = parseInt(sqliteSeedCountEl?.value || '250', 10);
+      const count = parseInt(sqliteSeedCountModalEl?.value || '250', 10);
       const data = await postSqliteJson('/api/dev/sqlite-seed', { count: Number.isFinite(count) ? count : 250 });
       setSqliteMessage(`Replaced table with ${data.seeded || 0} fake records.`);
+      if (typeof bootstrap !== 'undefined') {
+        const modalEl = document.getElementById('sqliteSeedModal');
+        const existing = bootstrap.Modal.getInstance(modalEl);
+        if (existing) existing.hide();
+      }
     } catch (err) {
       setSqliteMessage(err.message || String(err), true);
     }
@@ -476,8 +569,20 @@
       if (!response.ok) throw new Error(data.error || 'Snapshot import failed.');
       await refreshSqliteStatus();
       setSqliteMessage(`Imported snapshot successfully. Current rows: ${data.row_count || 0}.`);
+      if (typeof bootstrap !== 'undefined') {
+        const modalEl = document.getElementById('sqliteImportModal');
+        const existing = bootstrap.Modal.getInstance(modalEl);
+        if (existing) existing.hide();
+      }
     } catch (err) {
       setSqliteMessage(err.message || String(err), true);
+    }
+  });
+
+  document.getElementById('sqlite-open-import-modal')?.addEventListener('click', async () => {
+    if (typeof bootstrap !== 'undefined') {
+      const modal = new bootstrap.Modal(document.getElementById('sqliteImportModal'));
+      modal.show();
     }
   });
 </script>
