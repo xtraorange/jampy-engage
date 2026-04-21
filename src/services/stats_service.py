@@ -35,6 +35,7 @@ class StatsService:
             "runs_with_override_email": 0,
             "per_group_runtime_seconds_total": {},
             "per_group_completed_runs": {},
+            "per_group_last_generated_at": {},
         }
 
     def load_stats(self) -> Dict[str, Any]:
@@ -134,6 +135,8 @@ class StatsService:
         per_group = stats.get("per_group_generation_counts") or {}
         per_group_runtime_totals = stats.get("per_group_runtime_seconds_total") or {}
         per_group_completed_runs = stats.get("per_group_completed_runs") or {}
+        per_group_last_generated_at = stats.get("per_group_last_generated_at") or {}
+        run_completed_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
         for path in generated_files:
             name = os.path.basename(path)
             if " (" in name:
@@ -141,6 +144,7 @@ class StatsService:
             else:
                 handle = name
             per_group[handle] = int(per_group.get(handle, 0)) + 1
+            per_group_last_generated_at[handle] = run_completed_at
 
         for handle, detail in (group_run_details or {}).items():
             if not detail.get("success"):
@@ -152,6 +156,7 @@ class StatsService:
         stats["per_group_generation_counts"] = per_group
         stats["per_group_runtime_seconds_total"] = per_group_runtime_totals
         stats["per_group_completed_runs"] = per_group_completed_runs
+        stats["per_group_last_generated_at"] = per_group_last_generated_at
         self.save_stats(stats)
 
     def dashboard_metrics(self) -> Dict[str, Any]:
@@ -190,4 +195,5 @@ class StatsService:
             "reports_email_override_total": int(stats.get("reports_email_override_total", 0)),
             "runs_with_override_email": int(stats.get("runs_with_override_email", 0)),
             "per_group_avg_runtime_seconds": per_group_avg_runtime_seconds,
+            "per_group_last_generated_at": stats.get("per_group_last_generated_at") or {},
         }

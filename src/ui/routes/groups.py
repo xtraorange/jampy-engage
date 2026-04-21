@@ -4,6 +4,7 @@ import json
 import os
 
 from ...services.group_service import GroupService
+from ...services.stats_service import StatsService
 from ...utils.validation import build_entra_members_url
 from ...utils.validation import validate_group_handle
 from ...utils.file_utils import safe_delete_directory
@@ -12,19 +13,23 @@ def init_groups_routes(app, base_path: str):
     """Initialize group routes with dependencies."""
     groups_bp = Blueprint('groups', __name__)
     group_service = GroupService(base_path)
+    stats_service = StatsService(base_path)
 
     @groups_bp.route("/groups")
     def groups():
         """List all groups."""
         groups = group_service.discover_groups()
         all_tags = group_service.get_all_tags()
-        return render_template("groups.html", groups=groups, all_tags=all_tags)
+        metrics = stats_service.dashboard_metrics()
+        group_last_generated = metrics.get("per_group_last_generated_at", {}) or {}
+        return render_template("groups.html", groups=groups, all_tags=all_tags, group_last_generated=group_last_generated)
 
     @groups_bp.route("/group/<handle>", methods=["GET", "POST"])
     def edit_group(handle):
         """Edit a group."""
         group = group_service.get_group(handle)
         all_tags = group_service.get_all_tags()
+        group_last_generated = (stats_service.dashboard_metrics().get("per_group_last_generated_at", {}) or {}).get(handle)
         if group is None:
             return "Group not found", 404
 
@@ -86,7 +91,7 @@ def init_groups_routes(app, base_path: str):
                     if is_ajax:
                         return jsonify(ok=False, error="Invalid group handle"), 400
                     cfg = _build_cfg()
-                    return render_template("group.html", group=group, config=cfg, error="Invalid group handle", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True)
+                    return render_template("group.html", group=group, config=cfg, error="Invalid group handle", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True, group_last_generated=group_last_generated)
 
                 tags = [t.strip() for t in tags_str.split(",") if t.strip()]
                 original_handle = group.handle
@@ -109,7 +114,7 @@ def init_groups_routes(app, base_path: str):
                     if is_ajax:
                         return jsonify(ok=False, error="Save either Query Builder parameters or an override SQL script."), 400
                     cfg = _build_cfg()
-                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True)
+                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True, group_last_generated=group_last_generated)
                 group_service.update_group(
                     group=group,
                     query=query,
@@ -121,7 +126,7 @@ def init_groups_routes(app, base_path: str):
                     if is_ajax:
                         return jsonify(ok=False, error="Save either Query Builder parameters or an override SQL script."), 400
                     cfg = _build_cfg()
-                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True)
+                    return render_template("group.html", group=group, config=cfg, error="Save either Query Builder parameters or an override SQL script.", all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=True, group_last_generated=group_last_generated)
                 tags = [t.strip() for t in tags_str.split(",") if t.strip()]
                 group_service.update_group(
                     group=group,
@@ -143,12 +148,12 @@ def init_groups_routes(app, base_path: str):
                 if save_scope == "settings" and renamed:
                     payload["redirect_url"] = url_for("groups.edit_group", handle=group.handle)
                 return jsonify(payload)
-            return render_template("group.html", group=group, config=cfg, all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=False)
+            return render_template("group.html", group=group, config=cfg, all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=False, group_last_generated=group_last_generated)
 
         # Prepare data for template
         cfg = _build_cfg()
 
-        return render_template("group.html", group=group, config=cfg, all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=False)
+        return render_template("group.html", group=group, config=cfg, all_tags=all_tags, copy_source_groups=_copy_source_groups(), edit_mode=False, group_last_generated=group_last_generated)
 
     @groups_bp.route("/group/<handle>/query-config-preview", methods=["GET"])
     def query_config_preview(handle):

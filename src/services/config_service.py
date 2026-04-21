@@ -18,6 +18,10 @@ class ConfigService:
             "max_workers": None,
             "email_method": "smtp",
             "outlook_auto_send": False,
+            "notify_method": "teams",
+            "notify_default_recipient": "cknuth@fastenal.com",
+            "notify_subject_template": "Viva Engage Reports Generated - {date}",
+            "notify_body_template": "Reports were generated on {date}.\n\nGenerated report count: {generated_count}\n\n{selection_summary}\n",
             "ui_port": 5000,
         })
 

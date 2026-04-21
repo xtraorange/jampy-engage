@@ -9,6 +9,7 @@ import sys
 import threading
 import socket
 import json
+from datetime import datetime
 
 from .utils import setup_flask_app, load_version_info
 from .routes.main import init_main_routes
@@ -18,12 +19,32 @@ from .routes.api import init_api_routes
 from .routes.updates import init_updates_routes
 
 
+def _format_generated_date(value):
+    if not value:
+        return "Never"
+
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return "Never"
+        normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+        try:
+            dt = datetime.fromisoformat(normalized)
+        except ValueError:
+            return text
+
+    return f"{dt.month}.{dt.day}.{dt.strftime('%y')}"
+
+
 def create_app():
     """Create and configure the Flask application."""
     base = os.getcwd()
 
     # Set up Flask app
     app = setup_flask_app(base)
+    app.jinja_env.filters["generated_date"] = _format_generated_date
 
     # Load version info
     __version__, GITHUB_REPO = load_version_info(base)

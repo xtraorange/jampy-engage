@@ -93,6 +93,10 @@
           <div class="text-muted" id="view-output-dir" style="word-break: break-word;">{{ config.output_dir or "(Using global directory)" }}</div>
         </div>
         <div class="mb-3">
+          <strong>Last Generated:</strong>
+          <div class="text-muted" id="view-last-generated">{{ group_last_generated | generated_date }}</div>
+        </div>
+        <div class="mb-3">
           <strong>Entra Group:</strong>
           <div id="view-entra-group">
             {% if config.entra_group_id and config.entra_members_url %}

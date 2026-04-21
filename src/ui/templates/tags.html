@@ -31,6 +31,7 @@
         <div class="card-header">
           <h5 class="card-title mb-0 text-break">{{ tag.name }}</h5>
           <small>{{ tag.groups | length }} group{{ 's' if tag.groups | length != 1 else '' }}</small>
+          <div><small class="text-muted">Oldest generated: {{ tag.oldest_generated_at | generated_date }}</small></div>
         </div>
         <div class="card-body d-flex flex-column">
           {% if tag.groups %}
@@ -39,7 +40,10 @@
                 {% for group in tag.groups %}
                   <li class="list-group-item py-1 px-0 border-0">
                     <div class="d-flex justify-content-between align-items-center gap-2">
-                      <span class="small">{{ group.display_name or group.handle }}</span>
+                      <span class="small">
+                        {{ group.display_name or group.handle }}
+                        <span class="d-block text-muted" style="font-size: 0.72rem;">Last generated: {{ group_last_generated.get(group.handle) | generated_date }}</span>
+                      </span>
                       <a href="{{ url_for('groups.edit_group', handle=group.handle) }}" class="btn btn-sm btn-outline-primary tag-group-view-btn">View</a>
                     </div>
                   </li>

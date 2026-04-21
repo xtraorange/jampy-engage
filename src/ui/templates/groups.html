@@ -67,6 +67,11 @@
           </div>
         {% endif %}
 
+        <div class="mb-2 text-truncate">
+          <span class="text-muted small fw-semibold">Last Generated:&nbsp;</span>
+          <span class="small">{{ group_last_generated.get(g.handle) | generated_date }}</span>
+        </div>
+
         <div class="mt-auto text-end">
           {% if g.tags %}
             <div class="d-flex justify-content-end flex-wrap gap-1">

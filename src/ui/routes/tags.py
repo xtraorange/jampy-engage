@@ -2,29 +2,35 @@
 from flask import Blueprint, render_template, request, redirect, url_for
 
 from ...services.group_service import GroupService
+from ...services.stats_service import StatsService
 from ...utils.validation import validate_tag_name
 
 def init_tags_routes(app, base_path: str):
     """Initialize tag routes with dependencies."""
     tags_bp = Blueprint('tags', __name__)
     group_service = GroupService(base_path)
+    stats_service = StatsService(base_path)
 
     @tags_bp.route("/tags")
     def tags():
         """List all tags."""
         groups = group_service.discover_groups()
         all_tags = group_service.get_all_tags()
+        group_last_generated = stats_service.dashboard_metrics().get("per_group_last_generated_at", {}) or {}
 
         # Group tags with their associated groups
         tags_with_groups = []
         for tag in all_tags:
             associated_groups = [g for g in groups if tag in g.tags]
+            has_never_generated = any(not group_last_generated.get(g.handle) for g in associated_groups)
+            tag_dates = [group_last_generated.get(g.handle) for g in associated_groups if group_last_generated.get(g.handle)]
             tags_with_groups.append({
                 'name': tag,
-                'groups': associated_groups
+                'groups': associated_groups,
+                'oldest_generated_at': None if has_never_generated else (min(tag_dates) if tag_dates else None),
             })
 
-        return render_template("tags.html", tags=tags_with_groups)
+        return render_template("tags.html", tags=tags_with_groups, group_last_generated=group_last_generated)
 
     @tags_bp.route("/tag/new", methods=["GET", "POST"])
     def new_tag():

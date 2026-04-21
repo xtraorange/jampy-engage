@@ -198,6 +198,34 @@ def test_generate_page_preselects_group_from_query_param(client, app_workspace):
     assert b'id="group-solo_group" checked' in rv.data
 
 
+def test_generated_dates_render_as_short_dates_and_never_wins_tag_oldest(client, app_workspace):
+    _, base = app_workspace
+    _write_group(base, "alpha_group")
+    _write_group(base, "beta_group")
+
+    stats_path = base / "config" / "stats.yaml"
+    stats_path.write_text(
+        yaml.safe_dump(
+            {
+                "per_group_last_generated_at": {
+                    "alpha_group": "2025-04-20T14:32:11Z",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    generate_rv = client.get("/generate")
+    assert generate_rv.status_code == 200
+    assert b"Last generated: 4.20.25" in generate_rv.data
+    assert b"Oldest generated: Never" in generate_rv.data
+
+    tags_rv = client.get("/tags")
+    assert tags_rv.status_code == 200
+    assert b"Oldest generated: Never" in tags_rv.data
+    assert b"Last generated: 4.20.25" in tags_rv.data
+
+
 def test_dashboard_stats_api(client):
     rv = client.get("/api/dashboard-stats")
     assert rv.status_code == 200

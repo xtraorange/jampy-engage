@@ -109,6 +109,38 @@
           </label>
           <input type="email" class="form-control" id="email_recipient" name="email_recipient" value="{{ config.email_recipient }}" placeholder="e.g., reports@company.com">
         </div>
+
+        <div class="mb-3">
+          <label for="notify_method" class="form-label">
+            Notification Method
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Default method used by the post-run Notify button.">?</span>
+          </label>
+          <select class="form-select" id="notify_method" name="notify_method">
+            <option value="teams" {% if config.get('notify_method', 'teams')=='teams' %}selected{% endif %}>Teams</option>
+            <option value="email" {% if config.get('notify_method')=='email' %}selected{% endif %}>Email</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="notify_default_recipient" class="form-label">
+            Notification Default Recipient
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Default recipient used in the notification draft after generation.">?</span>
+          </label>
+          <input type="text" class="form-control" id="notify_default_recipient" name="notify_default_recipient" value="{{ config.get('notify_default_recipient', '') }}" placeholder="e.g., cknuth@fastenal.com">
+        </div>
+        <div class="mb-3">
+          <label for="notify_subject_template" class="form-label">
+            Notification Subject Template
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Supports placeholders: {date}, {generated_count}, {selection_summary}">?</span>
+          </label>
+          <input type="text" class="form-control" id="notify_subject_template" name="notify_subject_template" value="{{ config.get('notify_subject_template', '') }}" placeholder="Viva Engage Reports Generated - {date}">
+        </div>
+        <div class="mb-3">
+          <label for="notify_body_template" class="form-label">
+            Notification Body Template
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Supports placeholders: {date}, {generated_count}, {selection_summary}">?</span>
+          </label>
+          <textarea class="form-control" id="notify_body_template" name="notify_body_template" rows="5" placeholder="Reports were generated on {date}...">{{ config.get('notify_body_template', '') }}</textarea>
+        </div>
         </div>
       </fieldset>
 

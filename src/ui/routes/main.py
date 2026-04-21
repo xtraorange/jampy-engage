@@ -6,7 +6,9 @@ import json
 import os
 import threading
 import time
+import urllib.parse
 import uuid
+from datetime import datetime, timezone
 
 from ...services.config_service import ConfigService
 from ...services.adhoc_service import (
@@ -31,6 +33,121 @@ def init_main_routes(app, base_path: str):
     config_service = ConfigService(base_path)
     group_service = GroupService(base_path)
     stats_service = StatsService(base_path)
+
+    def _group_last_generated_map() -> dict:
+        return stats_service.dashboard_metrics().get("per_group_last_generated_at", {}) or {}
+
+    def _tag_oldest_generated_map(groups) -> dict:
+        last_map = _group_last_generated_map()
+        tag_dates = {}
+        tags_with_never = set()
+        for group in groups:
+            generated_at = last_map.get(group.handle)
+            if not generated_at:
+                tags_with_never.update(group.tags)
+                continue
+            for tag in group.tags:
+                if tag in tags_with_never:
+                    continue
+                existing = tag_dates.get(tag)
+                if existing is None or generated_at < existing:
+                    tag_dates[tag] = generated_at
+        for tag in tags_with_never:
+            tag_dates[tag] = None
+        return tag_dates
+
+    def _summarize_selection_for_notification(selected_handles: list[str], preferred_tags: list[str] | None = None) -> dict:
+        groups = group_service.discover_groups()
+        by_handle = {g.handle: g for g in groups}
+        selected_set = {handle for handle in selected_handles if handle in by_handle}
+
+        if not selected_set:
+            return {"selected_tags": [], "selected_groups": []}
+
+        tag_to_handles = {}
+        for group in groups:
+            for tag in group.tags:
+                tag_to_handles.setdefault(tag, set()).add(group.handle)
+
+        preferred = set(preferred_tags or [])
+        candidate_tags = []
+        for tag, handles in tag_to_handles.items():
+            if not handles:
+                continue
+            # Only consider tags that are fully represented by this run.
+            if handles.issubset(selected_set):
+                candidate_tags.append((tag, handles))
+
+        candidate_tags.sort(key=lambda item: (0 if item[0] in preferred else 1, -len(item[1]), item[0]))
+
+        covered = set()
+        selected_tags = []
+        for tag, handles in candidate_tags:
+            uncovered = handles - covered
+            if len(uncovered) < 2:
+                continue
+            selected_tags.append({"name": tag, "count": len(handles)})
+            covered.update(handles)
+
+        remaining_handles = sorted(selected_set - covered)
+        selected_groups = [
+            {
+                "handle": handle,
+                "display_name": by_handle[handle].display_name or handle,
+            }
+            for handle in remaining_handles
+        ]
+        return {
+            "selected_tags": selected_tags,
+            "selected_groups": selected_groups,
+        }
+
+    def _build_notification_defaults(summary: dict, config: dict) -> dict:
+        completed_at = summary.get("completed_at") or datetime.now(timezone.utc).isoformat(timespec="seconds")
+        selected_handles = summary.get("selected_handles") or []
+        generated_count = int(summary.get("generated_count") or 0)
+        preferred_tags = summary.get("selected_tags") or []
+
+        selection = _summarize_selection_for_notification(selected_handles, preferred_tags)
+        selection_lines = []
+        if selection["selected_tags"]:
+            selection_lines.append("Tags included:")
+            for tag_item in selection["selected_tags"]:
+                selection_lines.append(f"- {tag_item['name']} ({tag_item['count']} groups)")
+        if selection["selected_groups"]:
+            selection_lines.append("Groups included:")
+            for group_item in selection["selected_groups"]:
+                selection_lines.append(f"- {group_item['display_name']} ({group_item['handle']})")
+        if not selection_lines:
+            selection_lines.append("(No groups selected)")
+
+        selection_summary = "\n".join(selection_lines)
+        when_display = completed_at
+
+        subject_template = config.get("notify_subject_template") or "Viva Engage Reports Generated - {date}"
+        body_template = config.get("notify_body_template") or (
+            "Reports were generated on {date}.\n\n"
+            "Generated report count: {generated_count}\n\n"
+            "{selection_summary}\n"
+        )
+
+        context = {
+            "date": when_display,
+            "generated_count": generated_count,
+            "selection_summary": selection_summary,
+        }
+        subject = subject_template.format(**context)
+        body = body_template.format(**context)
+
+        return {
+            "method": config.get("notify_method") or "teams",
+            "recipient": config.get("notify_default_recipient") or config.get("email_recipient") or "cknuth@fastenal.com",
+            "subject": subject,
+            "body": body,
+            "selection_summary": selection_summary,
+            "generated_count": generated_count,
+            "completed_at": completed_at,
+        }
 
     def _build_match_input(headers, row_dict):
         lowered = {header.lower(): header for header in headers}
@@ -561,7 +678,7 @@ def init_main_routes(app, base_path: str):
             )
 
             # Start processing in background
-            tracker = start_jobs(app, selected, should_email, override)
+            tracker = start_jobs(app, selected, should_email, override, selected_tags=tag_sel)
             app.config["tracker"] = tracker
 
             return redirect(url_for("main.status"))
@@ -577,12 +694,15 @@ def init_main_routes(app, base_path: str):
             for tag in g.tags:
                 tag_counts[tag] = tag_counts.get(tag, 0) + 1
         tags = sorted(tag_counts.keys())
+        tag_oldest_generated = _tag_oldest_generated_map(groups)
         metrics = stats_service.dashboard_metrics()
+        group_last_generated = metrics.get("per_group_last_generated_at", {}) or {}
         group_meta = [
             {
                 "handle": g.handle,
                 "display_name": g.display_name or g.handle,
                 "tags": sorted(list(g.tags)) if g.tags else [],
+                "last_generated_at": group_last_generated.get(g.handle),
             }
             for g in groups
         ]
@@ -591,7 +711,7 @@ def init_main_routes(app, base_path: str):
         if preselected_handle and any(g.handle == preselected_handle for g in groups):
             preselected_group_handles.append(preselected_handle)
 
-        return render_template("report_generate.html", config=cfg, groups=groups, tags=tags, tag_counts=tag_counts, metrics=metrics, group_meta=group_meta,
+        return render_template("report_generate.html", config=cfg, groups=groups, tags=tags, tag_counts=tag_counts, tag_oldest_generated=tag_oldest_generated, group_last_generated=group_last_generated, metrics=metrics, group_meta=group_meta,
                                preselected_group_handles=preselected_group_handles,
                                updating=app.config.get("updating"),
                                update_error=app.config.get("update_error"))
@@ -619,6 +739,46 @@ def init_main_routes(app, base_path: str):
             results=tracker.results
         )
 
+    @main_bp.route("/api/notification-defaults", methods=["GET"])
+    def notification_defaults():
+        """Return the editable default notification draft for the latest run."""
+        summary = app.config.get("last_generation_summary") or {}
+        if not summary:
+            return jsonify({"error": "No completed run available yet."}), 404
+        cfg = config_service.load_general_config()
+        payload = _build_notification_defaults(summary, cfg)
+        return jsonify(payload)
+
+    @main_bp.route("/api/open-notification-draft", methods=["POST"])
+    def open_notification_draft():
+        """Build a Teams or email compose link from the edited notification draft."""
+        payload = request.get_json(silent=True) or {}
+        method = str(payload.get("method") or "teams").strip().lower()
+        recipient = str(payload.get("recipient") or "").strip()
+        subject = str(payload.get("subject") or "").strip()
+        body = str(payload.get("body") or "").strip()
+
+        if not recipient:
+            return jsonify({"error": "Recipient is required."}), 400
+        if not body:
+            return jsonify({"error": "Message body is required."}), 400
+
+        if method == "teams":
+            msg = body if not subject else f"{subject}\n\n{body}"
+            launch_url = (
+                "https://teams.microsoft.com/l/chat/0/0"
+                f"?users={urllib.parse.quote(recipient)}"
+                f"&message={urllib.parse.quote(msg)}"
+            )
+        else:
+            launch_url = (
+                f"mailto:{urllib.parse.quote(recipient)}"
+                f"?subject={urllib.parse.quote(subject)}"
+                f"&body={urllib.parse.quote(body)}"
+            )
+
+        return jsonify({"ok": True, "launch_url": launch_url, "method": method})
+
     @main_bp.route("/settings", methods=["GET", "POST"])
     def settings():
         """Settings page."""
@@ -643,6 +803,10 @@ def init_main_routes(app, base_path: str):
                 "smtp_use_tls",
                 "smtp_from",
                 "email_recipient",
+                "notify_method",
+                "notify_default_recipient",
+                "notify_subject_template",
+                "notify_body_template",
             ]:
                 if key in request.form:
                     val = request.form.get(key)
@@ -675,7 +839,7 @@ def init_main_routes(app, base_path: str):
     return main_bp
 
 
-def start_jobs(app, selected, should_email, override_email):
+def start_jobs(app, selected, should_email, override_email, selected_tags=None):
     """Start background job processing."""
     from ...services.config_service import ConfigService
     from ...services.report_service import ReportService
@@ -706,6 +870,14 @@ def start_jobs(app, selected, should_email, override_email):
             duration_seconds=time.perf_counter() - started,
             group_run_details=generated.get("group_run_details", {}),
         )
+        app.config["last_generation_summary"] = {
+            "completed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "selected_handles": [g.handle for g in selected],
+            "selected_tags": list(selected_tags or []),
+            "generated_files": generated.get("csv_files", []),
+            "generated_count": len(generated.get("csv_files", [])),
+            "group_run_details": generated.get("group_run_details", {}),
+        }
         # Processing complete - tracker will be cleaned up by the UI
 
     threading.Thread(target=task, daemon=True).start()

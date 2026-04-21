@@ -36,6 +36,7 @@
                       {% if g.display_name %}
                         <span class="text-muted small">({{ g.handle }})</span>
                       {% endif %}
+                      <span class="d-block text-muted small">Last generated: {{ group_last_generated.get(g.handle) | generated_date }}</span>
                     </label>
                   </div>
                 {% endfor %}
@@ -69,6 +70,7 @@
                     <label class="form-check-label generate-option-label" for="tag-{{ tag }}">
                       {{ tag }}
                       <span class="text-muted small">({{ tag_counts.get(tag, 0) }})</span>
+                      <span class="d-block text-muted small">Oldest generated: {{ tag_oldest_generated.get(tag) | generated_date }}</span>
                     </label>
                   </div>
                 {% endfor %}
