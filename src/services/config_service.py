@@ -14,6 +14,8 @@ class ConfigService:
     def load_general_config(self) -> Dict[str, Any]:
         """Load general configuration with defaults."""
         return self._load_config_with_defaults(self.config_path, {
+            "db_environment": "oracle",
+            "sqlite_db_path": "temp/demo_dev_test.sqlite3",
             "output_dir": os.path.join(self.base_path, "output"),
             "max_workers": None,
             "email_method": "smtp",

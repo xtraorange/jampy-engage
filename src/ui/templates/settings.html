@@ -69,6 +69,23 @@
         </legend>
         <div class="field-padded">
         <div class="mb-3">
+          <label for="db_environment" class="form-label">
+            Database Environment
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Choose Oracle production mode or the local SQLite demo/dev/test mode.">?</span>
+          </label>
+          <select class="form-select" id="db_environment" name="db_environment">
+            <option value="oracle" {% if config.get('db_environment', 'oracle') == 'oracle' %}selected{% endif %}>Oracle (default)</option>
+            <option value="sqlite" {% if config.get('db_environment') == 'sqlite' %}selected{% endif %}>SQLite demo/dev/test</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="sqlite_db_path" class="form-label">
+            SQLite Database Path
+            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Relative or absolute path for the local SQLite file used in test mode.">?</span>
+          </label>
+          <input type="text" class="form-control" id="sqlite_db_path" name="sqlite_db_path" value="{{ config.get('sqlite_db_path', 'temp/demo_dev_test.sqlite3') }}" placeholder="temp/demo_dev_test.sqlite3">
+        </div>
+        <div class="mb-3">
           <label for="oracle_tns" class="form-label">
             Oracle TNS
             <span class="badge bg-secondary" data-bs-toggle="tooltip" title="The Oracle TNS string for your database connection (e.g., tnsname or full connection string)">?</span>
@@ -186,6 +203,35 @@
   <button type="submit" class="btn btn-primary mt-3">Save</button>
 </form>
 
+{% if config.get('db_environment') == 'sqlite' %}
+<div class="card mb-4">
+  <div class="card-header">
+    <h5 class="mb-0">SQLite Dev Controls</h5>
+    <small>Only available while Database Environment is set to SQLite demo/dev/test.</small>
+  </div>
+  <div class="card-body">
+    <div id="sqlite-status" class="text-muted small mb-3">
+      Database: {{ sqlite_status.db_path if sqlite_status else 'unknown' }}
+      | Exists: {{ 'Yes' if sqlite_status and sqlite_status.exists else 'No' }}
+      | Table: {{ 'Yes' if sqlite_status and sqlite_status.table_exists else 'No' }}
+      | Rows: {{ sqlite_status.row_count if sqlite_status else 0 }}
+    </div>
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label for="sqlite-seed-count" class="form-label">Record Count</label>
+        <input id="sqlite-seed-count" type="number" class="form-control" value="250" min="1" max="5000">
+      </div>
+      <div class="col-md-9 d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline-secondary" id="sqlite-refresh-status">Refresh Status</button>
+        <button type="button" class="btn btn-outline-warning" id="sqlite-create-reset">Create / Reset Table + Seed</button>
+        <button type="button" class="btn btn-outline-primary" id="sqlite-reseed">Rebuild with Count</button>
+      </div>
+    </div>
+    <div id="sqlite-dev-message" class="small mt-3"></div>
+  </div>
+</div>
+{% endif %}
+
 <script>
   // Initialize Bootstrap tooltips if available
   if (typeof bootstrap !== 'undefined') {
@@ -221,6 +267,68 @@
       pollMs: 1500,
       shutdownDelayMs: 1200,
     });
+  });
+
+  const sqliteStatusEl = document.getElementById('sqlite-status');
+  const sqliteMsgEl = document.getElementById('sqlite-dev-message');
+  const sqliteSeedCountEl = document.getElementById('sqlite-seed-count');
+
+  function setSqliteMessage(text, isError = false) {
+    if (!sqliteMsgEl) return;
+    sqliteMsgEl.textContent = text || '';
+    sqliteMsgEl.className = 'small mt-3 ' + (isError ? 'text-danger' : 'text-success');
+  }
+
+  async function refreshSqliteStatus() {
+    if (!sqliteStatusEl) return;
+    const response = await fetch('/api/dev/sqlite-status');
+    const data = await response.json();
+    if (!response.ok) {
+      setSqliteMessage(data.error || 'Unable to load SQLite status.', true);
+      return;
+    }
+    sqliteStatusEl.textContent = `Database: ${data.db_path} | Exists: ${data.exists ? 'Yes' : 'No'} | Table: ${data.table_exists ? 'Yes' : 'No'} | Rows: ${data.row_count}`;
+  }
+
+  async function postSqliteAction(url, payload) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'SQLite action failed.');
+    }
+    await refreshSqliteStatus();
+    setSqliteMessage(`Success. Seeded ${data.seeded || 0} records.`);
+  }
+
+  document.getElementById('sqlite-refresh-status')?.addEventListener('click', async () => {
+    try {
+      setSqliteMessage('');
+      await refreshSqliteStatus();
+    } catch (err) {
+      setSqliteMessage(err.message || String(err), true);
+    }
+  });
+
+  document.getElementById('sqlite-create-reset')?.addEventListener('click', async () => {
+    try {
+      const count = parseInt(sqliteSeedCountEl?.value || '250', 10);
+      await postSqliteAction('/api/dev/sqlite-reset', { count: Number.isFinite(count) ? count : 250 });
+    } catch (err) {
+      setSqliteMessage(err.message || String(err), true);
+    }
+  });
+
+  document.getElementById('sqlite-reseed')?.addEventListener('click', async () => {
+    try {
+      const count = parseInt(sqliteSeedCountEl?.value || '250', 10);
+      await postSqliteAction('/api/dev/sqlite-seed', { count: Number.isFinite(count) ? count : 250 });
+    } catch (err) {
+      setSqliteMessage(err.message || String(err), true);
+    }
   });
 </script>
 {% endblock %}

@@ -1,0 +1,220 @@
+"""SQLite demo/dev/test database helpers."""
+
+from __future__ import annotations
+
+import os
+import random
+import sqlite3
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+
+FIRST_NAMES = [
+    "Avery", "Parker", "Morgan", "Blake", "Jordan", "Riley", "Cameron", "Taylor", "Drew", "Quinn",
+    "Skyler", "Rowan", "Alex", "Casey", "Harper", "Reese", "Hayden", "Sawyer", "Emerson", "Finley",
+]
+
+LAST_NAMES = [
+    "Carter", "Ellis", "Monroe", "Kendall", "Donovan", "Sutton", "Bennett", "Holland", "Merritt", "Palmer",
+    "Sinclair", "Marlow", "Hadley", "Winslow", "Granger", "Calloway", "Sterling", "Alden", "Whitaker", "Delaney",
+]
+
+MIDDLE_NAMES = [
+    "Lee", "Jude", "Kai", "Noel", "Ray", "Sage", "Lane", "Blair", "Skye", "Brooke",
+]
+
+JOB_PROFILES = [
+    ("002148", "IT Portfolio Manager", "04ITEE", "ITPortMgr"),
+    ("000760", "IT Business Analyst", "04IT44", "ITBA"),
+    ("001110", "Supply Chain Planner", "04SC10", "SupplyChain"),
+    ("001742", "Branch Operations Manager", "05OPS2", "BrOpsMgr"),
+    ("000992", "Purchasing Analyst", "04PUR1", "Purchasing"),
+    ("001401", "Data Reporting Analyst", "04ITBI", "DataReports"),
+    ("001955", "Inventory Coordinator", "05INV1", "Inventory"),
+    ("002020", "Contract Sales Specialist", "06SAL3", "ContractSales"),
+    ("001608", "Regional HR Partner", "07HR22", "HumanResources"),
+    ("001333", "Quality Process Lead", "08QL10", "Quality"),
+]
+
+LOCATIONS = ["HEADD", "MNMPLS", "PHXBRN", "ATLREG", "DALOPS", "SEATTL", "CHICTR", "DENHUB"]
+BU_CODES = ["FCPUR", "FCOPS", "FCSLS", "FCIT", "FCHR"]
+COMPANIES = ["PUR", "OPS", "SAL", "IT"]
+TREE_BRANCHES = ["CORPORATE", "NORTH_AMERICA", "EUROPE", "ASIA"]
+FTE_VALUES = ["F", "P"]
+
+
+def _schema_path(base_path: str) -> str:
+    return os.path.join(base_path, "src", "data", "employee_mv_schema.sql")
+
+
+def sqlite_db_path_from_config(base_path: str, config: Dict[str, Any]) -> str:
+    configured = str(config.get("sqlite_db_path") or "").strip()
+    if configured:
+        if os.path.isabs(configured):
+            return configured
+        return os.path.join(base_path, configured)
+    return os.path.join(base_path, "temp", "demo_dev_test.sqlite3")
+
+
+def _random_date(rng: random.Random, start_year: int = 2010, end_year: int = 2026) -> str:
+    start = datetime(start_year, 1, 1)
+    end = datetime(end_year, 12, 31)
+    days = max((end - start).days, 1)
+    value = start + timedelta(days=rng.randint(0, days))
+    return f"{value.month}/{value.day}/{value.year}"
+
+
+def _random_action_dt(rng: random.Random) -> str:
+    base = datetime(2026, rng.randint(1, 12), rng.randint(1, 28), rng.randint(7, 18), rng.randint(0, 59), rng.randint(0, 59))
+    hour = base.hour
+    ampm = "AM" if hour < 12 else "PM"
+    hour12 = hour % 12 or 12
+    return f"{base.month}/{base.day}/{base.year} {hour12}:{base.minute:02d}:{base.second:02d} {ampm}"
+
+
+def _build_username(first_name: str, last_name: str, idx: int) -> str:
+    left = (first_name[:3] + last_name[:4]).lower()
+    suffix = f"{idx % 1000:03d}"
+    return (left + suffix)[:12]
+
+
+def _full_name(last_name: str, first_name: str, middle_name: str) -> str:
+    return f"{last_name},{first_name} {middle_name}".strip()
+
+
+def generate_fake_employee_record(
+    idx: int,
+    rng: random.Random,
+    supervisors: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    first_name = rng.choice(FIRST_NAMES)
+    last_name = rng.choice(LAST_NAMES)
+    middle_name = rng.choice(MIDDLE_NAMES)
+    middle_init = middle_name[:1]
+
+    job_code, job_title, department_id, dept_desc = rng.choice(JOB_PROFILES)
+    location = rng.choice(LOCATIONS)
+    bu_code = rng.choice(BU_CODES)
+    company = rng.choice(COMPANIES)
+    tree_branch = rng.choice(TREE_BRANCHES)
+
+    employee_id = f"9{idx:06d}"
+    username = _build_username(first_name, last_name, idx)
+    preferred_name = f"{first_name} {last_name}"
+    formal_cn = f"CN={preferred_name},OU=Accounts,OU=Resources,DC=example,DC=local"
+
+    has_supervisor = bool(supervisors) and idx > 8
+    supervisor = rng.choice(supervisors) if has_supervisor else None
+
+    status = "A" if rng.random() > 0.05 else "T"
+    hire_dt = _random_date(rng, 2012, 2025)
+    termination_dt = _random_date(rng, 2025, 2026) if status == "T" else None
+
+    record = {
+        "EMPLOYEE_ID": employee_id,
+        "EFF_DT": _random_date(rng, 2025, 2026),
+        "EFF_SEQ": 0,
+        "LOCATION": location,
+        "DEPARTMENT_ID": department_id,
+        "JOB_CODE": job_code,
+        "JOB_TITLE": job_title,
+        "NAME": _full_name(last_name, first_name, middle_name),
+        "LAST_NAME": last_name,
+        "FIRST_NAME": first_name,
+        "MIDDLE_NAME": middle_name,
+        "NAME_PSFORMAT": _full_name(last_name, first_name, middle_name),
+        "SUPERVISOR_ID": supervisor.get("EMPLOYEE_ID") if supervisor else None,
+        "SUPERVISOR_NAME": supervisor.get("NAME") if supervisor else None,
+        "SUPERVISOR_JOB_CODE": supervisor.get("JOB_CODE") if supervisor else None,
+        "SUPERVISOR_JOB_TITLE": supervisor.get("JOB_TITLE") if supervisor else None,
+        "BU_CODE": bu_code,
+        "COMPANY": company,
+        "STATUS_CODE": status,
+        "ACTION_DT": _random_action_dt(rng),
+        "MIDDLE_INIT": middle_init,
+        "TERMINATION_DT": termination_dt,
+        "IS_KEY": 1 if rng.random() > 0.8 else 0,
+        "DEPT_LOC_DESCSHRT": dept_desc,
+        "HIRE_DT": hire_dt,
+        "LAST_HIRE_DT": hire_dt,
+        "FULL_PART_TIME": rng.choice(FTE_VALUES),
+        "GL_EXPENSE": f"0{rng.randint(1, 9)}MN{rng.randint(100, 999)}",
+        "USERNAME": username,
+        "PREFERRED_NAME": preferred_name,
+        "PHONE": f"(555){rng.randint(100, 999)}-{rng.randint(1000, 9999)}",
+        "NAME_FORMAL_TXT": formal_cn,
+        "MANAGER_ID": supervisor.get("USERNAME") if supervisor else None,
+        "MOBILE_PHONE": f"(555){rng.randint(100, 999)}-{rng.randint(1000, 9999)}",
+        "FAX": "",
+        "FAS_RIGHTFAX": "",
+        "EMAIL": f"{username}@example.test",
+        "EMAIL2": f"{username}@mail.example.test",
+        "APPROVER_ID": supervisor.get("EMPLOYEE_ID") if supervisor else None,
+        "TREE_BRANCH": tree_branch,
+    }
+
+    return record
+
+
+def _table_columns(conn: sqlite3.Connection) -> List[str]:
+    rows = conn.execute("PRAGMA table_info(employee_mv)").fetchall()
+    return [str(row[1]) for row in rows]
+
+
+def create_or_reset_sqlite_db(base_path: str, db_path: str) -> None:
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    schema_sql = open(_schema_path(base_path), "r", encoding="utf-8").read()
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(schema_sql)
+        conn.commit()
+
+
+def seed_sqlite_db(base_path: str, db_path: str, count: int = 250, seed: int = 42) -> int:
+    if count < 1:
+        return 0
+
+    rng = random.Random(seed)
+    create_or_reset_sqlite_db(base_path, db_path)
+
+    with sqlite3.connect(db_path) as conn:
+        columns = _table_columns(conn)
+        placeholders = ", ".join(["?"] * len(columns))
+        insert_sql = f"INSERT INTO employee_mv ({', '.join(columns)}) VALUES ({placeholders})"
+
+        supervisors: List[Dict[str, Any]] = []
+        rows = []
+        for idx in range(1, count + 1):
+            record = generate_fake_employee_record(idx, rng, supervisors)
+            rows.append(tuple(record.get(column) for column in columns))
+
+            if idx <= max(8, count // 8):
+                supervisors.append(record)
+
+        conn.executemany(insert_sql, rows)
+        conn.commit()
+
+    return count
+
+
+def sqlite_status(base_path: str, db_path: str) -> Dict[str, Any]:
+    exists = os.path.exists(db_path)
+    status: Dict[str, Any] = {
+        "db_path": db_path,
+        "exists": exists,
+        "table_exists": False,
+        "row_count": 0,
+    }
+    if not exists:
+        return status
+
+    with sqlite3.connect(db_path) as conn:
+        table_row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='employee_mv'"
+        ).fetchone()
+        if not table_row:
+            return status
+
+        status["table_exists"] = True
+        count_row = conn.execute("SELECT COUNT(*) FROM employee_mv").fetchone()
+        status["row_count"] = int(count_row[0] if count_row else 0)
+    return status

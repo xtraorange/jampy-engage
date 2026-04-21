@@ -23,6 +23,7 @@ from ...services.employee_lookup_service import EmployeeLookupService
 from ...utils import EXPORTABLE_FIELDS
 from ...services.group_service import GroupService
 from ...services.report_service import ReportService
+from ...services.sqlite_dev_service import sqlite_db_path_from_config, sqlite_status
 from ...services.stats_service import StatsService
 from ...generate_reports import discover_groups
 from ...db import DatabaseExecutor
@@ -792,6 +793,8 @@ def init_main_routes(app, base_path: str):
 
             # Update general config based on form fields
             for key in [
+                "db_environment",
+                "sqlite_db_path",
                 "oracle_tns",
                 "ui_port",
                 "output_dir",
@@ -827,7 +830,8 @@ def init_main_routes(app, base_path: str):
             return redirect(url_for("main.settings"))
 
         groups = group_service.discover_groups()
-        return render_template("settings.html", config=cfg, groups=groups, metrics=metrics,
+        sqlite_info = sqlite_status(base_path, sqlite_db_path_from_config(base_path, cfg))
+        return render_template("settings.html", config=cfg, groups=groups, metrics=metrics, sqlite_status=sqlite_info,
                                updating=app.config.get("updating"),
                                update_error=app.config.get("update_error"))
 

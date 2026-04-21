@@ -11,6 +11,12 @@ from ...services.adhoc_service import (
     load_employee_mv_columns,
 )
 from ...services.employee_lookup_service import EmployeeLookupService
+from ...services.sqlite_dev_service import (
+    create_or_reset_sqlite_db,
+    seed_sqlite_db,
+    sqlite_db_path_from_config,
+    sqlite_status,
+)
 from ...sql_builder import generate_safe_hierarchy_sql
 from ...query_explainer import explain_builder_query
 from ...db import DatabaseExecutor
@@ -21,6 +27,53 @@ def init_api_routes(app, base_path: str):
     """Initialize API routes with dependencies."""
     api_bp = Blueprint('api', __name__)
     config_service = ConfigService(base_path)
+
+    def _sqlite_guard_config():
+        cfg = config_service.load_general_config()
+        env = str(cfg.get("db_environment") or "oracle").strip().lower()
+        if env != "sqlite":
+            return None, jsonify({"error": "SQLite dev controls are available only when db_environment is sqlite."}), 400
+        return cfg, None, None
+
+    @api_bp.route("/api/dev/sqlite-status", methods=["GET"])
+    def sqlite_dev_status():
+        cfg = config_service.load_general_config()
+        path = sqlite_db_path_from_config(base_path, cfg)
+        info = sqlite_status(base_path, path)
+        info["environment"] = str(cfg.get("db_environment") or "oracle")
+        return jsonify(info)
+
+    @api_bp.route("/api/dev/sqlite-reset", methods=["POST"])
+    def sqlite_dev_reset():
+        cfg, error_response, status_code = _sqlite_guard_config()
+        if error_response is not None:
+            return error_response, status_code
+
+        payload = request.get_json(silent=True) or {}
+        count = int(payload.get("count") or 250)
+        path = sqlite_db_path_from_config(base_path, cfg)
+        create_or_reset_sqlite_db(base_path, path)
+        seeded = 0
+        if count > 0:
+            seeded = seed_sqlite_db(base_path, path, count=count)
+
+        info = sqlite_status(base_path, path)
+        return jsonify({"ok": True, "seeded": seeded, **info})
+
+    @api_bp.route("/api/dev/sqlite-seed", methods=["POST"])
+    def sqlite_dev_seed():
+        cfg, error_response, status_code = _sqlite_guard_config()
+        if error_response is not None:
+            return error_response, status_code
+
+        payload = request.get_json(silent=True) or {}
+        count = int(payload.get("count") or 100)
+        count = max(1, min(count, 5000))
+
+        path = sqlite_db_path_from_config(base_path, cfg)
+        seeded = seed_sqlite_db(base_path, path, count=count)
+        info = sqlite_status(base_path, path)
+        return jsonify({"ok": True, "seeded": seeded, **info})
 
     @api_bp.route("/api/search-employees", methods=["GET"])
     def search_employees():

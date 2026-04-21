@@ -1,11 +1,14 @@
 import csv
 import os
+import re
+import sqlite3
 import threading
 import time
 from datetime import datetime
 from typing import Any, Dict, List
 
 import jampy_db
+import yaml
 
 try:
     from flask import g, has_request_context
@@ -42,17 +45,109 @@ def _record_request_query_timing(query: str, elapsed_ms: float, row_count: int) 
     g.db_query_total_ms = float(getattr(g, "db_query_total_ms", 0.0)) + float(elapsed_ms)
 
 
+_FETCH_FIRST_RE = re.compile(r"FETCH\s+FIRST\s+(\d+)\s+ROWS\s+ONLY", re.IGNORECASE)
+_OFFSET_FETCH_RE = re.compile(
+    r"OFFSET\s+(\d+)\s+ROWS\s+FETCH\s+NEXT\s+(\d+)\s+ROWS\s+ONLY",
+    re.IGNORECASE,
+)
+
+
+def _runtime_db_config() -> Dict[str, Any]:
+    cfg_path = os.path.join(os.getcwd(), "config", "general.yaml")
+    if not os.path.exists(cfg_path):
+        return {}
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            loaded = yaml.safe_load(f) or {}
+            return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        return {}
+
+
+def _sqlite_db_path_from_config(config: Dict[str, Any]) -> str:
+    raw = str(config.get("sqlite_db_path") or "").strip()
+    if raw:
+        return raw if os.path.isabs(raw) else os.path.join(os.getcwd(), raw)
+    return os.path.join(os.getcwd(), "temp", "demo_dev_test.sqlite3")
+
+
+def _translate_oracle_sql_for_sqlite(query: str) -> str:
+    translated = str(query or "")
+    translated = re.sub(r"\bomsadm\.employee_mv\b", "employee_mv", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bNVL\s*\(", "COALESCE(", translated, flags=re.IGNORECASE)
+    translated = _OFFSET_FETCH_RE.sub(lambda m: f"LIMIT {m.group(2)} OFFSET {m.group(1)}", translated)
+    translated = _FETCH_FIRST_RE.sub(lambda m: f"LIMIT {m.group(1)}", translated)
+    return translated
+
+
+def _all_tab_columns_as_rows(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    rows = conn.execute("PRAGMA table_info(employee_mv)").fetchall()
+    return [{"COLUMN_NAME": str(row[1]).upper()} for row in rows]
+
+
+def _ensure_sqlite_schema(conn: sqlite3.Connection) -> None:
+    table_row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='employee_mv'"
+    ).fetchone()
+    if table_row:
+        return
+
+    schema_path = os.path.join(os.getcwd(), "src", "data", "employee_mv_schema.sql")
+    if not os.path.exists(schema_path):
+        return
+    try:
+        with open(schema_path, "r", encoding="utf-8") as f:
+            conn.executescript(f.read())
+            conn.commit()
+    except Exception:
+        pass
+
+
 class DatabaseExecutor:
     def __init__(self, tns: str, profile: str = "oracle_thick_external", **props):
-        # build a shared jampy_db client; extra props may include client_folder,
-        # lib_dir, config_dir, or any other profile-specific keyword arguments.
-        self.client = jampy_db.create(profile, tnsname=tns, **props)
+        cfg = _runtime_db_config()
+        self.environment = str(cfg.get("db_environment") or "oracle").strip().lower()
+        self.client = None
+        self._sqlite_conn = None
+        self._lock = threading.Lock()
+
+        if self.environment == "sqlite":
+            db_path = _sqlite_db_path_from_config(cfg)
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            self._sqlite_conn = sqlite3.connect(db_path, check_same_thread=False)
+            self._sqlite_conn.row_factory = sqlite3.Row
+            _ensure_sqlite_schema(self._sqlite_conn)
+        else:
+            # build a shared jampy_db client; extra props may include client_folder,
+            # lib_dir, config_dir, or any other profile-specific keyword arguments.
+            self.client = jampy_db.create(profile, tnsname=tns, **props)
+
+    def _run_sqlite_query(self, query: str) -> List[Any]:
+        if self._sqlite_conn is None:
+            return []
+
+        if re.search(r"\bALL_TAB_COLUMNS\b", str(query or ""), flags=re.IGNORECASE):
+            return _all_tab_columns_as_rows(self._sqlite_conn)
+
+        sql = _translate_oracle_sql_for_sqlite(query)
+        with self._lock:
+            cursor = self._sqlite_conn.cursor()
+            cursor.execute(sql)
+            if cursor.description is None:
+                self._sqlite_conn.commit()
+                return []
+            data = cursor.fetchall()
+            columns = [str(col[0]).upper() for col in (cursor.description or [])]
+            return [{columns[i]: row[i] for i in range(len(columns))} for row in data]
 
     def run_query(self, query: str) -> List[Any]:
-        # execute synchronously; default return_type 'rows' returns list of dicts
         started = time.perf_counter()
-        job = self.client.query(query, return_type="rows", run_async=False)
-        rows = job.result()
+        if self.environment == "sqlite":
+            rows = self._run_sqlite_query(query)
+        else:
+            # execute synchronously; default return_type 'rows' returns list of dicts
+            job = self.client.query(query, return_type="rows", run_async=False)
+            rows = job.result()
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         row_count = len(rows) if isinstance(rows, list) else 0
         _record_request_query_timing(query, elapsed_ms, row_count)
@@ -72,10 +167,16 @@ class DatabaseExecutor:
                 writer.writerow(row)
 
     def close(self) -> None:
-        try:
-            self.client.close()
-        except Exception:
-            pass
+        if self.client is not None:
+            try:
+                self.client.close()
+            except Exception:
+                pass
+        if self._sqlite_conn is not None:
+            try:
+                self._sqlite_conn.close()
+            except Exception:
+                pass
 
 
 # simple progress tracker shared among threads
